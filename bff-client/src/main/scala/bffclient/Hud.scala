@@ -69,6 +69,10 @@ final class Hud(client: GameClient) {
       case Some(sprite) => sprite.draw(x, y, 0, 14)
       case None         => Graphics.circle("fill", x, y, 6)
     }
+    // A thin dark border, like the icons'
+    Graphics.setColor(0, 0, 0, 0.85 * alpha)
+    Graphics.setLineWidth(1)
+    Graphics.circle("line", x, y, 9.5)
   }
 
   /** Class, name, life, resource and buffs of a player (the frontend's `PlayerFrame`). The frames of
