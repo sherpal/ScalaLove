@@ -237,6 +237,8 @@ final class Renderer(client: GameClient) {
               Graphics.setColor(0, 0, 0, 0.55)
               Graphics.rectangle("fill", rect.x + 6, iconTop, 32, 32 * remaining / u.cooldown.toDouble)
             }
+            // A thin dark border, so that the (often white) icons do not glare on the panels
+            roundedLine(Rect(rect.x + 5, iconTop - 1, 34, 34), 3, Paint(0, 0, 0, 0.85), 2)
             rect.x + 42
           case None =>
             for (remaining <- cooldown; u <- used)
