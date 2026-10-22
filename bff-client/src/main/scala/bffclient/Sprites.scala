@@ -1,5 +1,7 @@
 package bffclient
 
+import gamelogic.abilities.Ability
+
 /** An image, or a sheet of `rows` x `columns` animation frames. */
 final class Sprite(image: Image, rows: Int = 1, columns: Int = 1) {
   val frameWidth: Double  = image.getWidth() / columns
@@ -43,4 +45,23 @@ object Sprites {
 
   /** The sword of the triangle's direct hit. */
   lazy val sword: Option[Sprite] = load("abilities/sword.png")
+
+  /** The icons of the abilities, like the frontend's `Asset.abilityAssetMap`. */
+  lazy val abilityIcons: Map[Ability.AbilityId, Sprite] = Seq(
+    Ability.hexagonHexagonHotId      -> "hexagon-hot",
+    Ability.hexagonFlashHealId       -> "hexagon-flash-heal",
+    Ability.hexagonHexagonZoneId     -> "create-hexagon-zone",
+    Ability.squareHammerHit          -> "square-hammer-hit",
+    Ability.squareTauntId            -> "square-taunt",
+    Ability.squareEnrageId           -> "square-enrage",
+    Ability.squareCleaveId           -> "square-cleave",
+    Ability.triangleEnergyKick       -> "triangle-energy-kick",
+    Ability.triangleDirectHit        -> "triangle-direct-hit",
+    Ability.triangleUpgradeDirectHit -> "triangle-upgrade-direct-hit",
+    Ability.triangleStun             -> "triangle-stun",
+    Ability.triangleCut              -> "triangle-cut",
+    Ability.pentagonPentagonBullet   -> "pentagon-bullet",
+    Ability.createPentagonZoneId     -> "create-pentagon-zone",
+    Ability.pentagonDispelId         -> "pentagon-dispel"
+  ).flatMap((id, icon) => load(s"abilities/$icon.png").map(id -> _)).toMap
 }

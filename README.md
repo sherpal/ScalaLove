@@ -166,7 +166,9 @@ they cast. Like the frontend's `EffectsManager`, the abilities have effects
 damage we deal), green numbers for our heals, the square's cleave and the swing
 of the triangle's direct hit. Each action has its effects once, even when the
 server sends it again. The numbers follow their entity. Hexagon and pentagon
-zones are drawn in their owner's colour, and pentagon bullets too.
+zones are drawn in their owner's colour, and pentagon bullets too. The action
+bar shows the frontend's ability icons, darkened from the top during their
+cooldown and pushed down for a moment when used.
 
 The images are the frontend's: `bffClient/luaLink` copies them from the Battle
 for Flatland checkout (`BFF_DIR`, by default `../BattleForFlatland`) next to

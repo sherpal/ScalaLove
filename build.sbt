@@ -91,7 +91,12 @@ val bffImages = Seq(
   "abilities/player-casting-ability-animation.png",
   "abilities/cleave-animation.png",
   "abilities/sword.png"
-)
+) ++ Seq( // the icons of the abilities
+  "hexagon-hot", "hexagon-flash-heal", "create-hexagon-zone", "square-hammer-hit", "square-taunt",
+  "square-enrage", "square-cleave", "triangle-energy-kick", "triangle-direct-hit",
+  "triangle-upgrade-direct-hit", "triangle-stun", "triangle-cut", "pentagon-bullet",
+  "create-pentagon-zone", "pentagon-dispel"
+).map(icon => s"abilities/$icon.png")
 
 // Experiment: a LÖVE client for Battle for Flatland (menus and game)
 lazy val bffClient = luaProject(project.in(file("bff-client")))

@@ -259,29 +259,42 @@ final class Renderer(client: GameClient) {
     for (id <- client.myId; me <- gameState.players.get(id)) {
       val names     = abilityNames(me)
       val abilities = me.abilities.toArray
-      val slot      = 140.0
+      val slot      = 176.0
       val left      = (width - slot * abilities.length) / 2
-      val top       = height - 60.0
+      val top       = height - 64.0
       for ((abilityId, i) <- abilities.zipWithIndex) {
-        val x = left + i * slot
-        val cooldown = me.relevantUsedAbilities.get(abilityId)
-          .map(used => used.time + used.cooldown - now).filter(_ > 0)
+        val x        = left + i * slot
+        val used     = me.relevantUsedAbilities.get(abilityId)
+        val cooldown = used.map(u => u.time + u.cooldown - now).filter(_ > 0)
         Graphics.setColor(1, 1, 1, 0.85)
-        Graphics.rectangle("fill", x + 2, top, slot - 4, 40)
-        cooldown.foreach { remaining =>
-          val total = me.relevantUsedAbilities(abilityId).cooldown.toDouble
-          Graphics.setColor(0.3, 0.3, 0.3, 0.6)
-          Graphics.rectangle("fill", x + 2, top, (slot - 4) * remaining / total, 40)
-        }
+        Graphics.rectangle("fill", x + 2, top, slot - 4, 44)
         val colour = Ability.abilityColour(abilityId)
         Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0)
         Graphics.rectangle("fill", x + 2, top, slot - 4, 4)
+        val textLeft = Sprites.abilityIcons.get(abilityId) match {
+          case Some(icon) =>
+            // Like the frontend: pushed down just after it is used, darkened from the top during its cooldown
+            val iconTop = top + 6 + (if (used.exists(u => now - u.time < 100)) 3 else 0)
+            Graphics.setColor(1, 1, 1)
+            icon.draw(x + 24, iconTop + 16, 0, 32, 32)
+            for (remaining <- cooldown; u <- used) {
+              Graphics.setColor(0, 0, 0, 0.5)
+              Graphics.rectangle("fill", x + 8, iconTop, 32, 32 * remaining / u.cooldown.toDouble)
+            }
+            x + 46
+          case None =>
+            for (remaining <- cooldown; u <- used) {
+              Graphics.setColor(0.3, 0.3, 0.3, 0.6)
+              Graphics.rectangle("fill", x + 2, top, (slot - 4) * remaining / u.cooldown.toDouble, 44)
+            }
+            x + 6
+        }
         Graphics.setColor(0, 0, 0)
-        Graphics.rectangle("line", x + 2, top, slot - 4, 40)
+        Graphics.rectangle("line", x + 2, top, slot - 4, 44)
         val keyLabel = client.controls.abilityKeys.lift(i).fold("-")(_.label)
-        Graphics.print(s"[$keyLabel]", x + 6, top + 6)
-        Graphics.printf(names.getOrElse(abilityId, s"#$abilityId"), x + 4, top + 22, slot - 8, "left")
-        cooldown.foreach(r => Graphics.print(s"${(r + 99) / 100 / 10.0}s", x + slot - 36, top + 6))
+        Graphics.print(s"[$keyLabel]", textLeft, top + 8)
+        Graphics.printf(names.getOrElse(abilityId, s"#$abilityId"), textLeft, top + 24, x + slot - 4 - textLeft, "left")
+        cooldown.foreach(r => Graphics.print(s"${(r + 99) / 100 / 10.0}s", x + slot - 36, top + 8))
       }
       val resource = me.resourceAmount
       Graphics.setColor(0, 0, 0)
