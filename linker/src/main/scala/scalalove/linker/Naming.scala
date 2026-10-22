@@ -17,7 +17,7 @@ object Naming {
 
   /** Identifiers used by the generated code itself; locals must avoid them. */
   val Reserved: Set[String] = Set(
-    "R", "C", "MOD", "LOAD", "AT", "bit", "ffi", "tobit", "band", "bor", "bxor",
+    "R", "C", "MOD", "LOAD", "AT", "L", "F", "FC", "cl", "bit", "ffi", "tobit", "band", "bor", "bxor",
     "bnot", "lshift", "rshift", "arshift", "self", "_"
   )
 

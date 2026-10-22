@@ -9,6 +9,10 @@ import org.scalajs.ir.WellKnownNames.*
 
 /** Translates the body of one IR method (or top-level function) to Lua.
  *
+ *  Lua limits a function to 200 local variables. When `spill` is true, the
+ *  local variables (but not the parameters) are stored in a table `L` instead,
+ *  which is used for the (rare) huge methods, typically from inlined derivations.
+ *
  *  The translation is a classic "unnesting" one: `expr` returns a Lua
  *  expression for a tree, possibly emitting statements first (into temporary
  *  locals) when the tree contains statement-only constructs (blocks, ifs,
@@ -16,7 +20,7 @@ import org.scalajs.ir.WellKnownNames.*
  *  into a [[Target]] (discard it, return it, or assign it to a variable), which
  *  avoids most temporaries.
  */
-final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
+final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: Boolean = false) {
   import FunctionEmitter.*
 
   // ---------------------------------------------------------------------------
@@ -25,7 +29,17 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
   private var out = new StringBuilder
   private var indentLevel = 1
 
+  private var localCount = 0
+  private var maxLocals = 0
+
+  /** Maximum number of locals declared in one Lua function (an upper bound of the live ones). */
+  def maxLocalCount: Int = maxLocals
+
   private def line(s: String): Unit = {
+    if (s.startsWith("local ")) {
+      localCount += s.takeWhile(_ != '=').count(_ == ',') + 1
+      if (localCount > maxLocals) maxLocals = localCount
+    }
     var i = 0
     while (i < indentLevel) { out.append("  "); i += 1 }
     // A statement starting with `(` would be parsed as a call of the previous line's expression
@@ -59,12 +73,31 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
     tempCounter += 1
     val t = s"_t$tempCounter"
     usedIdents += t
-    t
+    if (spill) s"L.$t" else t
+  }
+
+  /** Parameters stay Lua locals even in spill mode. */
+  private val paramNames = mutable.Set.empty[LocalName]
+
+  private def paramIdent(name: LocalName): String = {
+    paramNames += name
+    localIdent(name)
+  }
+
+  /** Declares a local variable (or, in spill mode, initializes a field of `L`). */
+  private def declare(ident: String, value: Option[String]): Unit = {
+    if (spill) value.foreach(v => line(s"$ident = $v"))
+    else line(s"local $ident${value.fold("")(v => s" = $v")}")
   }
 
   private def localIdent(name: LocalName): String = {
     if (name == LocalName.This) "this"
-    else localIdents.getOrElseUpdate(name, {
+    else if (spill && !paramNames(name)) "L." + baseLocalIdent(name)
+    else baseLocalIdent(name)
+  }
+
+  private def baseLocalIdent(name: LocalName): String = {
+    localIdents.getOrElseUpdate(name, {
       var base = Naming.sanitize(name.nameString).replaceAll("_+", "_")
       if (base.startsWith("_")) base = "v" + base
       fresh(base)
@@ -86,14 +119,23 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
   private var tryStack: List[TryContext] = Nil
 
   // ---------------------------------------------------------------------------
+  // Lifted functions
+
+  /** Scala lambdas (typed closures) lifted out of this method: (key in `F`, code, has captures). */
+  val liftedFunctions = mutable.ListBuffer.empty[(String, String, Boolean)]
+  private var liftPrefix = "fn"
+
+  // ---------------------------------------------------------------------------
   // Entry points
 
   /** Emits a method definition `function <fullName>(params) body end`. */
   def emitMethod(fullName: String, thisParam: Option[String], params: List[ParamDef],
       resultType: Type, body: Tree, returnThis: Boolean): String = {
-    val paramIdents = thisParam.toList ++ params.map(p => localIdent(p.name.name))
+    liftPrefix = Naming.sanitize(fullName.stripPrefix("C."))
+    val paramIdents = thisParam.toList ++ params.map(p => paramIdent(p.name.name))
     out.append(s"function $fullName(${paramIdents.mkString(", ")})\n")
     line("local _")
+    if (spill) line("local L = {}")
     if (resultType == VoidType) {
       stat(body)
       if (returnThis) line("return this")
@@ -126,9 +168,9 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
         val ident = localIdent(name.name)
         if (isSimple(rhs) || rhs.tpe == NothingType) {
           val e = adapt(expr(rhs), rhs.tpe, vtpe)
-          line(s"local $ident = $e")
+          declare(ident, Some(e))
         } else {
-          line(s"local $ident")
+          declare(ident, None)
           emitInto(rhs, AssignTo(ident, vtpe))
         }
 
@@ -143,7 +185,11 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
           case ArraySelect(array, index) =>
             val List(a, i) = exprsBefore(List(array, index), rhs)
             s"${prefixCode(a)}[$i]"
-          case JSSelect(qual, item) =>
+          case JSSelect(qual, item0) =>
+            val item = item0 match {
+              case StringLiteral(ArrayIndex(i)) => IntLiteral(i)(using item0.pos)
+              case _                            => item0
+            }
             val List(q, k) = exprsBefore(List(qual, item), rhs)
             jsMemberLhs(q, item, k)
           case RecordSelect(_, _) =>
@@ -202,8 +248,13 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
       case ForIn(obj, keyVar, _, body) =>
         val o = expr(obj).code
         val k = localIdent(keyVar.name)
-        line(s"for $k in pairs($o) do")
-        indented(stat(body))
+        if (spill) {
+          line(s"for _k in pairs($o) do")
+          indented { line(s"$k = _k"); stat(body) }
+        } else {
+          line(s"for $k in pairs($o) do")
+          indented(stat(body))
+        }
         line("end")
 
       case TryCatch(block, errVar, _, handler) =>
@@ -211,7 +262,7 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
         val res = emitPcall(block, resultVar.map(v => AssignTo(v, tree.tpe)))
         line(s"if not ${res.ok} then")
         indented {
-          line(s"local ${localIdent(errVar.name)} = ${res.err}")
+          declare(localIdent(errVar.name), Some(res.err))
           emitInto(handler, target)
         }
         line("else")
@@ -362,7 +413,9 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
     val k = newTemp()
     val v = newTemp()
     val ctx = new TryContext(fnDepth + 1)
-    line(s"local $ok, $err, $k, $v = pcall(function()")
+    line(s"${if (spill) "" else "local "}$ok, $err, $k, $v = pcall(function()")
+    val savedLocalCount = localCount
+    localCount = 0
     indented {
       fnDepth += 1
       tryStack ::= ctx
@@ -372,6 +425,7 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
       } finally {
         tryStack = tryStack.tail
         fnDepth -= 1
+        localCount = savedLocalCount
       }
     }
     line("end)")
@@ -399,7 +453,7 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
     if (target == Discard || tree.tpe == VoidType || tree.tpe == NothingType) None
     else {
       val t = newTemp()
-      line(s"local $t")
+      declare(t, None)
       Some(t)
     }
   }
@@ -461,7 +515,7 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
     if (e.kind == Prefix && Naming.isValidLuaIdent(e.code)) e.code
     else {
       val t = newTemp()
-      line(s"local $t = ${e.code}")
+      declare(t, Some(e.code))
       t
     }
   }
@@ -567,13 +621,17 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
           args(args0, paramTypes(method.name)))
 
     case ApplyTypedClosure(_, fun, args0) =>
-      val all = exprs(fun :: args0)
+      // A Scala lambda is a table {liftedFunction, captures...}: call liftedFunction(lambda, args...)
+      val funExp = expr(fun)
+      val f =
+        if (DottedIdent.matches(funExp.code) && args0.forall(isSimple)) funExp.code
+        else { val t = newTemp(); declare(t, Some(funExp.code)); t }
       val expected = fun.tpe match {
         case ClosureType(paramTypes, _, _) => paramTypes
         case _                             => args0.map(_ => AnyType)
       }
-      val as = all.tail.lazyZip(args0).lazyZip(expected).map((c, t, exp) => adapt(LExp(c, Prefix), t.tpe, exp))
-      call(prefixCode(all.head), as)
+      val as = args(args0, expected)
+      call(s"$f[1]", f :: as)
 
     case New(className, ctor, args0) =>
       val cls = s"C.${Naming.className(className)}"
@@ -633,6 +691,10 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
     case JSNew(ctor, args0) =>
       val all = jsArgs(ctor :: args0)
       call("R.jnew", all)
+
+    case JSSelect(qual, StringLiteral(ArrayIndex(i))) =>
+      // In JS, a["0"] is a[0]
+      expr(JSSelect(qual, IntLiteral(i)(using tree.pos))(using tree.pos))
 
     case JSSelect(qual, item) =>
       val List(q, k) = exprs(List(qual, item))
@@ -715,7 +777,7 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
           LExp("nil", Other)
         case _ =>
           val t = newTemp()
-          line(s"local $t")
+          declare(t, None)
           emitInto(tree, AssignTo(t, tree.tpe))
           LExp(t, Prefix)
       }
@@ -771,31 +833,51 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
     val savedIndent = indentLevel
     val savedLabels = labels
     val savedTry = tryStack
+    val savedLocalCount = localCount
     out = new StringBuilder
     indentLevel = 1
     labels = Map.empty
     tryStack = Nil
+    localCount = 0
     fnDepth += 1
     val code = try {
-      val paramIdents = params.map(p => localIdent(p.name.name)) ++ restParam.map(_ => "...")
-      val captureIdents = captureParams.map(p => localIdent(p.name.name))
+      val paramIdents = params.map(p => paramIdent(p.name.name)) ++ restParam.map(_ => "...")
+      val captureIdents = captureParams.map(p => paramIdent(p.name.name))
+      if (flags.typed && captureIdents.nonEmpty) {
+        val loads = captureIdents.indices.map(i => s"cl[${i + 2}]")
+        line(s"local ${captureIdents.mkString(", ")} = ${loads.mkString(", ")}")
+      }
       line("local _")
+      if (spill) line("local L = {}")
       if (!flags.arrow && !flags.typed) line("local this = nil")
-      restParam.foreach(p => line(s"local ${localIdent(p.name.name)} = R.restArgs(...)"))
+      restParam.foreach(p => line(s"local ${paramIdent(p.name.name)} = R.restArgs(...)"))
       if (resultType == VoidType) stat(body)
       else emitInto(body, ReturnTo(resultType))
       val bodyCode = out.toString
-      val fn = s"function(${paramIdents.mkString(", ")})\n$bodyCode${"  " * savedIndent}end"
-      if (captureParams.isEmpty) fn
-      else s"(function(${captureIdents.mkString(", ")}) return $fn end)(${captureCodes.mkString(", ")})"
+      if (flags.typed) {
+        // Lambda lifting: LuaJIT cannot compile closure creation (FNEW), but table creation is fine
+        val key = s"${liftPrefix}_${liftedFunctions.size + 1}"
+        liftedFunctions += ((key, s"function(${("cl" :: paramIdents).mkString(", ")})\n${bodyCode}end", captureParams.nonEmpty))
+        if (captureParams.isEmpty) s"FC.$key"
+        else (s"F.$key" :: captureCodes).mkString("{", ", ", "}")
+      } else {
+        val fn = s"function(${paramIdents.mkString(", ")})\n$bodyCode${"  " * savedIndent}end"
+        if (captureParams.isEmpty) fn
+        else s"(function(${captureIdents.mkString(", ")}) return $fn end)(${captureCodes.mkString(", ")})"
+      }
     } finally {
       out = savedOut
       indentLevel = savedIndent
       labels = savedLabels
       tryStack = savedTry
+      localCount = savedLocalCount
       fnDepth -= 1
     }
-    LExp(code, if (captureParams.isEmpty) Other else Call)
+    val kind =
+      if (flags.typed) (if (captureParams.isEmpty) Prefix else Other)
+      else if (captureParams.isEmpty) Other
+      else Call
+    LExp(code, kind)
   }
 
   // ---------------------------------------------------------------------------
@@ -1067,6 +1149,13 @@ object FunctionEmitter {
   case object Other extends Kind
 
   final case class LExp(code: String, kind: Kind)
+
+  /** Strings that JS treats as array indices. */
+  object ArrayIndex {
+    def unapply(s: String): Option[Int] =
+      if (s.nonEmpty && s.length <= 9 && s.forall(_.isDigit) && (s == "0" || s.head != '0')) Some(s.toInt)
+      else None
+  }
 
   private val DottedIdent = """[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*""".r
 

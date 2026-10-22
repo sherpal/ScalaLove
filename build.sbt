@@ -51,3 +51,22 @@ lazy val game = luaProject(project)
 
 // A headless program checking the semantics of the generated Lua code
 lazy val selftest = luaProject(project)
+
+// Experiment: BattleForFlatland's game logic (published locally from that repo with
+// `sharedJS/publishLocal sharedJVM/publishLocal`, organization local.bff), run on the JVM and in Lua.
+val bffVersion = "0.1.0-local"
+def bffSimSettings = Seq(
+  scalaVersion := "3.9.0",
+  Compile / unmanagedSourceDirectories += (ThisBuild / baseDirectory).value / "bff-sim" / "src" / "main" / "scala"
+)
+
+lazy val bffSim = luaProject(project.in(file("bff-sim/lua")))
+  .settings(bffSimSettings)
+  .settings(libraryDependencies += "local.bff" %%% "shared" % bffVersion)
+
+lazy val bffSimJVM = project.in(file("bff-sim/jvm"))
+  .settings(bffSimSettings)
+  .settings(
+    libraryDependencies += "local.bff" %% "shared" % bffVersion,
+    run / fork := true
+  )

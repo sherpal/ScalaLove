@@ -43,6 +43,34 @@ To take a screenshot from inside LÖVE (useful to check rendering from a script)
 love tools/screenshot game/target/lua 120
 ```
 
+## Experiment: Battle for Flatland's game logic
+
+`bff-sim/` runs the game logic of
+[Battle for Flatland](../BattleForFlatland) (its `shared` module, consumed as a
+library, not copied) in a headless, deterministic replay of the game server's
+loop: simulated clock at 125 Hz, `GreedyActionGatherer` + the `ServerAction`s,
+boss from `BossFactory`, and scripted players walking to the boss and using
+their main ability. The same driver runs on the JVM (`bffSimJVM`) and in Lua
+(`bffSim`), so the outputs can be compared.
+
+```bash
+# In BattleForFlatland: publish the shared module locally (no file is modified)
+sbt 'set ThisBuild / organization := "local.bff"' 'set ThisBuild / version := "0.1.0-local"' \
+    'set LocalProject("sharedJS") / Compile / packageDoc / publishArtifact := false' \
+    'set LocalProject("sharedJVM") / Compile / packageDoc / publishArtifact := false' \
+    sharedJS/publishLocal sharedJVM/publishLocal
+
+# Here
+sbt bffSimJVM/run bffSim/luaTest
+```
+
+Results (Boss 101, 8 players, ~11k ticks until the boss dies):
+
+* The Lua output is identical to the JVM one (positions, lives, buffs, action
+  counts, end tick), once doubles are printed the Scala.js way (`20000` vs `20000.0`).
+* 1,670 classes, ~99k lines of Lua.
+* ~2.5 s in LuaJIT (≈0.23 ms per tick), vs ~0.7 s on the JVM including its start-up.
+
 ## How it works
 
 ```
@@ -80,6 +108,17 @@ Scala sources ──scalac + Scala.js plugin──▶ .sjsir (Scala.js IR)
 
 Control flow: labeled blocks and early returns use `goto` (LuaJIT supports it),
 `try`/`catch`/`finally` use `pcall`.
+
+Performance notes (LuaJIT):
+
+* Scala lambdas are lifted to top-level functions; a lambda value is a table
+  `{F.fn, captures...}`. LuaJIT cannot compile closure creation (`FNEW`), which
+  otherwise aborts most traces in collection-heavy code.
+* The runtime raises LuaJIT's machine-code and trace limits (`jit.opt.start`):
+  with the defaults, big programs make LuaJIT flush and recompile its traces
+  endlessly (10× slower on the Battle for Flatland experiment).
+* Lua allows 200 locals per function: huge methods (e.g. inlined Magnolia
+  derivations) store their locals in a table instead.
 
 ### Calling LÖVE
 

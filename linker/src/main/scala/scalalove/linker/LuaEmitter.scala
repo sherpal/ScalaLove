@@ -48,6 +48,11 @@ final class GlobalContext(val classes: Map[ClassName, LinkedClass]) {
   def allArrayTypes: List[(ArrayTypeRef, Int)] = arrayTypes.toList
 }
 
+object LuaEmitter {
+  /** Above this number of declared locals in a Lua function, we spill them (Lua's limit is 200). */
+  val MaxLocals = 180
+}
+
 /** Emits a whole linked program as a single Lua file. */
 final class LuaEmitter(moduleSet: ModuleSet) {
   private val linkedClasses: List[LinkedClass] =
@@ -120,6 +125,8 @@ final class LuaEmitter(moduleSet: ModuleSet) {
     ln("local tobit, band, bor, bxor, bnot = bit.tobit, bit.band, bit.bor, bit.bxor, bit.bnot")
     ln("local lshift, rshift, arshift = bit.lshift, bit.rshift, bit.arshift")
     ln("local AT = {}")
+    ln("-- Lifted Scala lambdas: F.x is the function, a lambda value is {F.x, captures...} (FC.x without captures)")
+    ln("local F, FC = {}, {}")
     ln()
 
     // 1. Class tables
@@ -151,9 +158,20 @@ final class LuaEmitter(moduleSet: ModuleSet) {
           ln(overridden.get(m.args.map(a => Naming.sanitize(a.name.name.nameString))))
           ln("end")
         } else try {
-          val fe = new FunctionEmitter(g, c.className)
-          sb.append(fe.emitMethod(name, thisParam, m.args, m.resultType, body,
-              returnThis = ns == MemberNamespace.Constructor))
+          def emitWith(spill: Boolean): (String, FunctionEmitter) = {
+            val fe = new FunctionEmitter(g, c.className, spill)
+            val code = fe.emitMethod(name, thisParam, m.args, m.resultType, body,
+                returnThis = ns == MemberNamespace.Constructor)
+            (code, fe)
+          }
+          val first = emitWith(spill = false)
+          // Lua allows at most 200 locals per function: spill them into a table if we may exceed it
+          val (code, fe) = if (first._2.maxLocalCount > LuaEmitter.MaxLocals) emitWith(spill = true) else first
+          for ((key, fnCode, hasCaptures) <- fe.liftedFunctions) {
+            sb.append(s"F.$key = ").append(fnCode).append('\n')
+            if (!hasCaptures) sb.append(s"FC.$key = {F.$key}\n")
+          }
+          sb.append(code)
         } catch {
           case e: Exception =>
             unsupportedCount += 1

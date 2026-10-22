@@ -10,6 +10,14 @@
 --   Scala objects                    -> tables whose metatable is their class table
 --   Arrays                           -> tables { length = n, [0] = ..., [n-1] = ... }
 local R = {}
+
+-- JIT tuning for large generated programs. With the defaults (512 KB of machine
+-- code, 1000 traces), LuaJIT fills its machine-code area, flushes every trace and
+-- recompiles them over and over, spending most of its time in the JIT compiler.
+if jit and jit.opt then
+  jit.opt.start("maxmcode=65536", "maxtrace=10000", "loopunroll=60")
+end
+
 local bit = require("bit")
 local ffi = require("ffi")
 local tobit, band, bor, bxor, bnot = bit.tobit, bit.band, bit.bor, bit.bxor, bit.bnot
@@ -839,7 +847,15 @@ end
 -- o[k] for a JS value o
 function R.jget(o, k)
   local t = type(o)
-  if t == "table" or t == "userdata" then return o[k] end
+  if t == "table" or t == "userdata" then
+    local v = o[k]
+    -- In JS, a["0"] is a[0]
+    if v == nil and type(k) == "string" and t == "table" and getmetatable(o) == JSArray then
+      local i = tonumber(k)
+      if i then return o[i] end
+    end
+    return v
+  end
   if t == "string" then
     if k == "length" then return #o end
     return JSString[k]
