@@ -45,6 +45,12 @@ object LuaBackend {
     .withStringIndexOutOfBounds(CheckedBehavior.Unchecked)
     .withModuleInit(CheckedBehavior.Unchecked)
 
+  /** Targeting ES 5.1 makes the Scala.js library use its pure Scala fallbacks instead of
+   *  newer JS built-ins (e.g. heap `ByteBuffer`s instead of typed arrays).
+   */
+  @annotation.nowarn("cat=deprecation") // ES 5.1 is deprecated as a JS target, which does not matter for Lua
+  val esFeatures: ESFeatures = ESFeatures.Defaults.withESVersion(ESVersion.ES5_1)
+
   def runtime: String = {
     val in = getClass.getResourceAsStream("/scalalove/runtime.lua")
     try new String(in.readAllBytes(), StandardCharsets.UTF_8)
@@ -60,6 +66,7 @@ object Main {
 
     val config = StandardConfig()
       .withSemantics(LuaBackend.semantics)
+      .withESFeatures(LuaBackend.esFeatures)
       .withOptimizer(false)
       .withCheckIR(true)
     val frontend = StandardLinkerFrontend(config)

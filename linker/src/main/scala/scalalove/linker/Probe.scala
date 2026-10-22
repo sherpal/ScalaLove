@@ -20,7 +20,7 @@ object Probe {
   def main(args: Array[String]): Unit = {
     val Array(mainClass, cp) = args
     val classpath = cp.split(java.io.File.pathSeparator).toSeq.map(Paths.get(_))
-    val config = StandardConfig().withSemantics(LuaBackend.semantics).withOptimizer(false).withCheckIR(true)
+    val config = StandardConfig().withSemantics(LuaBackend.semantics).withESFeatures(LuaBackend.esFeatures).withOptimizer(false).withCheckIR(true)
     val frontend = StandardLinkerFrontend(config)
     val logger = new ScalaConsoleLogger(Level.Warn)
     val f = for {

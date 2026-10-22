@@ -71,6 +71,17 @@ Results (Boss 101, 8 players, ~11k ticks until the boss dies):
 * 1,670 classes, ~99k lines of Lua.
 * ~2.5 s in LuaJIT (≈0.23 ms per tick), vs ~0.7 s on the JVM including its start-up.
 
+The websocket traffic of that fight (485 messages: the server's
+`AddAndRemoveActions`, the clients' `GameActionWrapper`s and the other
+`InGameWSProtocol` messages) is then round-tripped through boopickle with the
+game's own `BFFPicklers`:
+
+* The bytes produced in Lua are identical to the JVM ones (same checksum over
+  the 53,024 bytes), and every message decodes back to an equal value. A Lua
+  client can therefore talk to the existing JVM game server as is.
+* Encoding + decoding takes ≈0.16 ms per message in LuaJIT once warm
+  (≈0.01 ms on the JVM).
+
 ## How it works
 
 ```
@@ -146,6 +157,10 @@ LÖVE is called through ordinary Scala.js facades (see `game/src/main/scala/love
   ```
 
   This works with any Lua function (e.g. `string.find`) and tuples up to `Tuple22`.
+
+The linker frontend is configured for ECMAScript 5.1, which makes the Scala.js
+library pick its pure Scala fallbacks over newer JS built-ins (e.g. heap
+`ByteBuffer`s instead of typed arrays).
 
 The Scala.js standard library itself calls a few JavaScript built-ins
 (`Math.max`, `Object.prototype.hasOwnProperty`, JS arrays, string methods, ...);

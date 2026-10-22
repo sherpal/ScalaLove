@@ -14,6 +14,7 @@ import gamelogic.gamestate.gameactions.*
 import gamelogic.gamestate.serveractions.*
 import gamelogic.physics.Complex
 import gamelogic.utils.IdGeneratorContainer
+import models.bff.ingame.InGameWSProtocol
 import models.bff.outofgame.PlayerClasses
 
 /** A headless, deterministic replay of what the game server does during a fight.
@@ -29,7 +30,16 @@ object Simulation {
 
   final case class Result(gameState: GameState, ticks: Int, actionCount: Long)
 
-  def run(bossName: String, playersPerClass: Int, maxTicks: Int, log: String => Unit): Result = {
+  /** Runs a fight. `onMessage` receives the in-game websocket messages that the server and the
+    * clients would send.
+    */
+  def run(
+      bossName: String,
+      playersPerClass: Int,
+      maxTicks: Int,
+      log: String => Unit,
+      onMessage: InGameWSProtocol => Unit = _ => ()
+  ): Result = {
     given ids: IdGeneratorContainer = IdGeneratorContainer.initialIdGeneratorContainer
 
     val factory = BossFactory.factoriesByBossName(bossName)
@@ -75,13 +85,31 @@ object Simulation {
       // InGameBehaviour.loop
       val sortedActions = pending.sorted.map(_.changeIdWithGen())
       pending = Vector.empty
-      val (nextGatherer, _, _) = gatherer.masterAddAndRemoveActions(sortedActions)
+      val (nextGatherer, oldestTimeToRemove, idsToRemove) =
+        gatherer.masterAddAndRemoveActions(sortedActions)
       val (finalGatherer, output) = serverAction(nextGatherer, () => time)
       gatherer = finalGatherer
       actionCount += sortedActions.length + output.createdActions.length
 
-      // The "AIs" run at ~60 Hz
-      if (tick % 2 == 0) pending = pending ++ playerActions(gatherer.currentGameState, time)
+      // What GameMaster sends to the clients
+      val finalOutput = ServerAction
+        .ServerActionOutput(sortedActions, oldestTimeToRemove, idsToRemove)
+        .merge(output)
+      if (finalOutput.createdActions.nonEmpty || finalOutput.idsOfIdsToRemove.nonEmpty)
+        onMessage(
+          InGameWSProtocol.AddAndRemoveActions(
+            finalOutput.createdActions,
+            finalOutput.oldestTimeToRemove,
+            finalOutput.idsOfIdsToRemove
+          )
+        )
+
+      // The "AIs" run at ~60 Hz, and send their actions like a client would
+      if (tick % 2 == 0) {
+        val actions = playerActions(gatherer.currentGameState, time)
+        if (actions.nonEmpty) onMessage(InGameWSProtocol.GameActionWrapper(actions))
+        pending = pending ++ actions
+      }
 
       if (tick % 1000 == 0) log(summary(gatherer.currentGameState, tick, actionCount))
       tick += 1

@@ -580,6 +580,9 @@ js.Error = {
   end,
 }
 
+js.performance = { now = function() return os.clock() * 1000 end }
+js.Date = { now = function() return os.time() * 1000 end }
+
 js.Number = {
   isNaN = function(x) return x ~= x end,
   isFinite = function(x) return x == x and x ~= huge and x ~= -huge end,
