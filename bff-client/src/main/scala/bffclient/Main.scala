@@ -109,7 +109,10 @@ object Main {
         Love.keyreleased = (_, scancode) => if (!overlayShown) client.keyReleased(scancode)
         Love.mousepressed = (x, y, button, _, _) =>
           if (overlayShown) ui.mousePressed(x, y, button)
-          else if (button == 1) client.clicked(renderer.toWorld(x, y))
+          else if (button == 1) renderer.hud.targetAt(x, y) match {
+            case Some(id) => client.selectTarget(id) // a frame of the HUD
+            case None     => client.clicked(renderer.toWorld(x, y))
+          }
         Love.mousereleased = (x, y, button, _, _) => if (overlayShown) ui.mouseReleased(x, y, button)
       }
     }
@@ -174,6 +177,9 @@ final class GameClient(
       .sortBy(e => (if (gameState.bosses.contains(e.id)) 0 else 1, e.id.toString))
 
   /** The selected target if it still exists, otherwise the boss. */
+  /** Targets this entity (e.g. its frame was clicked). */
+  def selectTarget(id: Entity.Id): Unit = targetId = Some(id)
+
   def currentTarget: Option[Entity.Id] =
     targetId.filter(gameState.entities.contains).orElse(gameState.bosses.keys.headOption)
 

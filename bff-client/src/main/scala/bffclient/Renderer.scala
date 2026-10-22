@@ -21,6 +21,9 @@ import gamelogic.physics.shape.{Circle, Polygon}
   */
 final class Renderer(client: GameClient) {
 
+  /** Team frames, boss frame, boss cooldowns and threat meter. */
+  val hud = new Hud(client)
+
   private var cameraPosition = Complex.zero
   private var screenWidth    = 800.0
   private var screenHeight   = 600.0
@@ -201,7 +204,8 @@ final class Renderer(client: GameClient) {
       Graphics.circle("fill", x, y, 45)
     }
 
-    hud(gameState, screen.width)
+    infoLines(gameState, screen.width)
+    hud.draw(painter, screen.width, screen.height)
     actionBar(gameState, now, screen.width, screen.height)
   }
 
@@ -252,14 +256,9 @@ final class Renderer(client: GameClient) {
         left + 2, top - 18)
     }
 
-  private def hud(gameState: GameState, width: Int): Unit = {
+  /** Ping, controls, target and messages (the lives are in the HUD's frames). */
+  private def infoLines(gameState: GameState, width: Int): Unit = {
     Graphics.setColor(0, 0, 0)
-    val boss = gameState.bosses.values.headOption
-      .fold("No boss")(b => s"${b.name}: ${math.round(b.life)} / ${math.round(b.maxLife)}")
-    val me = client.myId.flatMap(gameState.players.get)
-      .fold("You are dead (or not yet spawned)")(p => s"You: ${math.round(p.life)} / ${math.round(p.maxLife)}")
-    Graphics.print(boss, 10, 10)
-    Graphics.print(me, 10, 28)
     Graphics.print(s"ping: ${client.roundTrip} ms   messages: ${client.messagesReceived}", 10, 46)
     val c = client.controls
     Graphics.print(

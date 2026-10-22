@@ -10,9 +10,10 @@ import gamelogic.entities.{Body, Entity, EntityCastingInfo, LivingEntity}
 import gamelogic.entities.boss.boss102.{BossHound, DamageZone}
 import gamelogic.entities.boss.boss104.{BigGuy as Boss104BigGuy, BigGuyDeathMark, DebuffCircle, DeathMarkTriangle}
 import gamelogic.entities.boss.boss105.{ReformationPoint, Shade}
-import gamelogic.entities.boss.dawnoftime.Boss105
+import gamelogic.entities.boss.dawnoftime.{Boss102, Boss105}
 import gamelogic.entities.boss.firstraid.SirOfVice
 import gamelogic.entities.boss.sirofvice.HolyWrathChain
+import gamelogic.gamestate.GameState
 import gamelogic.physics.Complex
 import utils.misc.RGBColour
 
@@ -184,6 +185,25 @@ object BossVisuals {
       for ((from, to) <- chain.positions.zip(chain.positions.drop(1))) line(from, to, 4, wrathColour.withAlpha(alpha))
     }
   }
+
+  /** How to tint the frame of the player in the HUD, like the frontend's `BossGUIPlugin`s: Boss 104's
+    * twin debuffs must be dispelled from inside the circle of their colour, and the bearer of Boss
+    * 105's volatile charge must be dispelled or go away from everybody (more and more urgently).
+    * The colour of the contour, and of the background with its opacity.
+    */
+  def playerFrameTint(gameState: GameState, playerId: Entity.Id): Option[(Paint, Double)] =
+    gameState.allBuffsOfEntity(playerId).collectFirst {
+      case debuff: TwinDebuff => (paint(debuff.colour), 0.45)
+      case charge: VolatileCharge =>
+        val elapsed = math.min(1.0, math.max(0.0, (gameState.time - charge.appearanceTime).toDouble / VolatileCharge.duration))
+        (chargeColour, 0.25 + 0.5 * elapsed)
+    }
+
+  /** A boss-specific line of the HUD, like the frontend's `bossspecificcomponents`. */
+  def hudText(gameState: GameState): Option[String] =
+    Option.when(gameState.bosses.values.exists(_.name == Boss102.name))(
+      s"Hounds: ${gameState.allTEntities[BossHound].size}"
+    )
 
   /** The adds of the bosses. */
   def adds(p: Painter): Unit = {

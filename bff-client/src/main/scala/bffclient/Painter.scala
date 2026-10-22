@@ -117,15 +117,17 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
       val (x, y) = toScreen(position(entity) + Complex.i * (entity.shape.radius + 10))
       val left   = x - buffs.size * (size + 2) / 2
       val top    = y - 2.5 - 3 - size
-      for (((buff, icon), i) <- buffs.zipWithIndex) {
-        val iconLeft = left + i * (size + 2) + 1
-        Graphics.setColor(1, 1, 1)
-        icon.draw(iconLeft + size / 2, top + size / 2, 0, size, size)
-        if (buff.isFinite) {
-          Graphics.setColor(0, 0, 0, 0.5)
-          Graphics.rectangle("fill", iconLeft, top, size, size * buff.remainingPercentage(gameState.time))
-        }
-      }
+      for (((buff, icon), i) <- buffs.zipWithIndex) buffIcon(buff, icon, left + i * (size + 2) + 1, top, size)
+    }
+  }
+
+  /** The icon of the buff (on screen), darkened from the top by the part of its duration that remains. */
+  def buffIcon(buff: Buff, icon: Sprite, left: Double, top: Double, size: Double): Unit = {
+    Graphics.setColor(1, 1, 1)
+    icon.draw(left + size / 2, top + size / 2, 0, size, size)
+    if (buff.isFinite) {
+      Graphics.setColor(0, 0, 0, 0.5)
+      Graphics.rectangle("fill", left, top, size, size * buff.remainingPercentage(gameState.time))
     }
   }
 

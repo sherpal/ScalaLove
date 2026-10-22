@@ -173,6 +173,15 @@ of their buffs and debuffs (the frontend's, oldest first), darkened by the part
 of their duration that remains. The permanent buffs that every player of a class
 has (the square's shield, the resource fillers) are not shown.
 
+The HUD (`Hud.scala`) has the frontend's components: the frames of the team on
+the left (class, name, life, resource and buffs; faded when out of healing
+range; outlined in red when targeted), the boss's frame on top (life, and what
+it casts), the cooldowns of the boss's abilities on the top right, and the
+threat meter on the bottom right. Clicking the frame of a player or of the boss
+targets it (so that healers can target their team). Like the frontend's boss
+plugins, Boss 104 and Boss 105 tint the frames of the players with a twin
+debuff or a volatile charge, and Boss 102 counts its hounds.
+
 What is specific to each boss is drawn like the frontend's
 `bossspecificdrawers` (`BossVisuals.scala`): Boss 102's hounds, damage zones
 and living damage zones (animated); Boss 104's big guys, death marks, debuff
