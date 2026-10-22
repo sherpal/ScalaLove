@@ -86,11 +86,13 @@ object Main {
       val lag = env("BFF_LAG_MS", "0").toDouble / 1000
       if (lag > 0) println(s"Simulated latency: ${lag * 1000} ms round trip")
       if headless then {
-        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => Complex.zero, lag)
+        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => Complex.zero,
+          () => None, lag)
         Love.update = dt => client.update(dt)
       } else {
         var renderer: Renderer = null
-        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => renderer.mouseWorld, lag)
+        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => renderer.mouseWorld,
+          () => renderer.hud.hovered, lag)
         renderer = new Renderer(client)
         // While an overlay is shown (game menu, end of game), the inputs go to it
         val ui          = new Ui
@@ -113,7 +115,9 @@ object Main {
             case Some(id) => client.selectTarget(id) // a frame of the HUD
             case None     => client.clicked(renderer.toWorld(x, y))
           }
-        Love.mousereleased = (x, y, button, _, _) => if (overlayShown) ui.mouseReleased(x, y, button)
+        Love.mousereleased = (x, y, button, _, _) =>
+          if (overlayShown) ui.mouseReleased(x, y, button)
+          else if (button != 1) client.mouseButtonReleased(button) // the left one targets and places zones
       }
     }
   }
@@ -126,6 +130,8 @@ final class GameClient(
     val controls: Controls,
     val controlsInfo: String,
     mouseWorld: () => Complex,
+    /** The entity whose frame (in the HUD) is under the mouse. */
+    hovered: () => Option[Entity.Id],
     /** Simulated round trip latency in seconds (BFF_LAG_MS), half on each way, to try the prediction. */
     lag: Double = 0
 ) {
@@ -210,6 +216,9 @@ final class GameClient(
   def keyReleased(scancode: String): Unit =
     LoveInput.inputCode(scancode).map(controls.getOrUnknown).foreach(handleInput)
 
+  /** Mouse buttons can be bound in the controls too (`button` is LÖVE's number). */
+  def mouseButtonReleased(button: Int): Unit = handleInput(controls.getOrUnknown(LoveInput.mouseCode(button)))
+
   def handleInput(input: UserInput): Unit = input match {
     case abilityInput: UserInput.AbilityInput =>
       choosingPosition = None
@@ -219,7 +228,8 @@ final class GameClient(
         me <- gameState.players.get(id)
       } abilityInput.abilityId(me) match {
         case Some(abilityId) =>
-          request(c.cast(abilityId, me, gameState, serverNow, currentTarget, mouseWorld()))
+          request(c.cast(abilityId, me, gameState, serverNow, currentTarget, mouseWorld(),
+            if (controls.mouseOverEnabled) hovered() else None))
         case None =>
           request(CastRequest.Error(s"No ability on input ${abilityInput.abilityIndex + 1}"))
       }

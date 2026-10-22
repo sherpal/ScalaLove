@@ -13,6 +13,12 @@ import models.syntax.Pointed
 object ControlsFile {
   val fileName = "controls.json"
 
+  /** Writes the controls (used by the next game). An error message if it failed. */
+  def save(controls: Controls): Option[String] = {
+    val written = Filesystem.write(fileName, Encoder[Controls].apply(controls).spaces2)
+    Option.unless(written.success)(s"Could not write ${Filesystem.getSaveDirectory()}/$fileName: ${written.message}")
+  }
+
   /** The controls to use, and a message saying where they come from. */
   def load(): (Controls, String) = {
     val default = Pointed[Controls].unit

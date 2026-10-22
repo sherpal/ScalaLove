@@ -25,6 +25,21 @@ final class Hud(client: GameClient) {
   def targetAt(x: Double, y: Double): Option[Entity.Id] =
     clickable.collectFirst { case (rect, id) if rect.contains(x, y) => id }
 
+  /** The entity whose frame is under the mouse (for "mouse over" in the controls). */
+  def hovered: Option[Entity.Id] = {
+    val mouse = Mouse.getPosition()
+    targetAt(mouse.x, mouse.y)
+  }
+
+  /** Lightens the frame under the mouse (like the frontend's `HoverHighlight`). */
+  private def hoverHighlight(rect: Rect, radius: Double = 6): Unit = {
+    val mouse = Mouse.getPosition()
+    if (rect.contains(mouse.x, mouse.y)) {
+      roundedFill(rect, radius, Paint(1, 1, 1, 0.1))
+      roundedLine(rect, radius, Paint(1, 1, 1, 0.5), 1)
+    }
+  }
+
   private val frameHeight = 64.0
 
   /** Where our frame and our target's are (above the action bar). */
@@ -104,6 +119,7 @@ final class Hud(client: GameClient) {
     for (((buff, icon), j) <- p.iconBuffs(id).zipWithIndex.take(((frame.width - 12) / (iconSize + 2)).toInt))
       p.buffIcon(buff, icon, frame.x + 6 + j * (iconSize + 2), frame.y + 50, iconSize)
 
+    hoverHighlight(frame)
     clickable :+= (frame, id)
   }
 
@@ -174,6 +190,7 @@ final class Hud(client: GameClient) {
         Graphics.setColor(1, 1, 1)
         lock.draw(frame.right - 9, frame.y + 12, 0, lock.frameWidth)
       }
+      hoverHighlight(frame)
       clickable :+= (frame, target.id)
     }
 
@@ -215,6 +232,7 @@ final class Hud(client: GameClient) {
       }
       for (((buff, icon), i) <- buffs.zipWithIndex.take(18))
         p.buffIcon(buff, icon, rect.x + 6 + i * 16, buffsTop, 14)
+      hoverHighlight(rect)
       clickable :+= (rect, boss.id)
     }
 

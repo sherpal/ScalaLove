@@ -261,7 +261,8 @@ final class Renderer(client: GameClient) {
     Graphics.print(
       s"Move: ${c.upKey.label} ${c.leftKey.label} ${c.downKey.label} ${c.rightKey.label}   " +
         s"Next target: ${c.nextTargetKey.label} (or click)   " +
-        s"Face target: ${c.targetLockInToggleKey.label} (${if (client.lockInToTarget) "on" else "off"})   Escape: menu",
+        s"Face target: ${c.targetLockInToggleKey.label} (${if (client.lockInToTarget) "on" else "off"})   " +
+          s"Mouse over: ${if (c.mouseOverEnabled) "on" else "off"}   Escape: menu",
       10, 90)
     val target = client.currentTarget.flatMap(gameState.entities.get).collect { case l: LivingEntity => l }
       .fold("Target: none") { t =>

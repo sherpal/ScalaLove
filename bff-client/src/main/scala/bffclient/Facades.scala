@@ -75,6 +75,8 @@ object Love extends js.Object {
   var mousereleased: js.Function5[Double, Double, Int, Boolean, Int, Unit] = js.native
   /** Text typed on the keyboard (UTF-8), see `love.keyboard.setTextInput`. */
   var textinput: js.Function1[String, Unit]                   = js.native
+  /** (x, y): how much the mouse wheel moved (y positive upwards). */
+  var wheelmoved: js.Function2[Double, Double, Unit]          = js.native
   /** Not null when the graphics module is enabled (i.e. not headless). */
   val graphics: js.Any = js.native
 }
@@ -103,6 +105,9 @@ object Graphics extends js.Object {
       oy: Double): Unit = js.native
   def newQuad(x: Double, y: Double, width: Double, height: Double, imageWidth: Double, imageHeight: Double): Quad =
     js.native
+  /** Only draws inside this rectangle (until `setScissor()`). */
+  def setScissor(x: Double, y: Double, width: Double, height: Double): Unit = js.native
+  def setScissor(): Unit                                                              = js.native
   def newFont(size: Int): Font                                                        = js.native
   def setFont(font: Font): Unit                                                       = js.native
   def getFont(): Font                                                                 = js.native

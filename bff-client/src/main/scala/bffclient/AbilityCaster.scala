@@ -36,49 +36,57 @@ final class AbilityCaster(myId: Entity.Id) {
         else Error(s"No ability on key ${index + 1}")
     }
 
+  /** @param mouseOver
+    *   the entity whose frame is under the mouse, if "mouse over" is enabled in the controls: the
+    *   abilities with a target fall back to it when the target is missing or not valid for them
+    */
   def cast(
       abilityId: Ability.AbilityId,
       player: PlayerClass,
       gameState: GameState,
       now: Long,
       target: Option[Entity.Id],
-      mouse: Complex
-  ): CastRequest = abilityId match {
-    case Ability.hexagonFlashHealId =>
-      withTarget(FlashHeal(Ability.UseId.zero, now, myId, _), target, gameState, now)
-    case Ability.hexagonHexagonHotId =>
-      withTarget(HexagonHot(Ability.UseId.zero, now, myId, _), target, gameState, now)
-    case Ability.squareTauntId =>
-      withTarget(Taunt(Ability.UseId.zero, now, myId, _), target, gameState, now)
-    case Ability.squareHammerHit =>
-      withTarget(HammerHit(Ability.UseId.zero, now, myId, _), target, gameState, now)
-    case Ability.squareCleaveId =>
-      val myPosition = player.currentPosition(now)
-      val direction  = mouse - myPosition
-      send(Cleave(Ability.UseId.zero, now, myId, myPosition + player.shape.radius * direction.normalized, direction.arg),
-        gameState, now)
-    case Ability.squareEnrageId =>
-      send(Enrage(Ability.UseId.zero, now, myId), gameState, now)
-    case Ability.triangleEnergyKick =>
-      withTarget(EnergyKick(Ability.UseId.zero, now, myId, _), target, gameState, now)
-    case Ability.triangleDirectHit =>
-      withTarget(DirectHit(Ability.UseId.zero, now, myId, _, DirectHit.directHitDamage), target, gameState, now)
-    case Ability.triangleUpgradeDirectHit =>
-      send(UpgradeDirectHit(Ability.UseId.zero, now, myId), gameState, now)
-    case Ability.triangleStun =>
-      withTarget(Stun(Ability.UseId.zero, now, myId, _), target, gameState, now)
-    case Ability.triangleCut =>
-      withTarget(Cut(Ability.UseId.zero, now, myId, _), target, gameState, now)
-    case Ability.pentagonPentagonBullet =>
-      val direction = Complex.rotation(player.rotation)
-      send(CreatePentagonBullet(Ability.UseId.zero, now, myId, player.pos + player.shape.radius * direction,
-        CreatePentagonBullet.damage, direction.arg, player.colour), gameState, now)
-    case Ability.pentagonDispelId =>
-      withTarget(PentaDispel(Ability.UseId.zero, now, myId, _), target, gameState, now)
-    case Ability.createPentagonZoneId | Ability.hexagonHexagonZoneId =>
-      ChoosePosition(abilityId)
-    case other =>
-      Error(s"Ability $other is not supported yet")
+      mouse: Complex,
+      mouseOver: => Option[Entity.Id] = None
+  ): CastRequest = {
+    def onTarget(ability: Entity.Id => Ability) = withTarget(ability, target, mouseOver, gameState, now)
+    abilityId match {
+      case Ability.hexagonFlashHealId =>
+        onTarget(FlashHeal(Ability.UseId.zero, now, myId, _))
+      case Ability.hexagonHexagonHotId =>
+        onTarget(HexagonHot(Ability.UseId.zero, now, myId, _))
+      case Ability.squareTauntId =>
+        onTarget(Taunt(Ability.UseId.zero, now, myId, _))
+      case Ability.squareHammerHit =>
+        onTarget(HammerHit(Ability.UseId.zero, now, myId, _))
+      case Ability.squareCleaveId =>
+        val myPosition = player.currentPosition(now)
+        val direction  = mouse - myPosition
+        send(Cleave(Ability.UseId.zero, now, myId, myPosition + player.shape.radius * direction.normalized, direction.arg),
+          gameState, now)
+      case Ability.squareEnrageId =>
+        send(Enrage(Ability.UseId.zero, now, myId), gameState, now)
+      case Ability.triangleEnergyKick =>
+        onTarget(EnergyKick(Ability.UseId.zero, now, myId, _))
+      case Ability.triangleDirectHit =>
+        onTarget(DirectHit(Ability.UseId.zero, now, myId, _, DirectHit.directHitDamage))
+      case Ability.triangleUpgradeDirectHit =>
+        send(UpgradeDirectHit(Ability.UseId.zero, now, myId), gameState, now)
+      case Ability.triangleStun =>
+        onTarget(Stun(Ability.UseId.zero, now, myId, _))
+      case Ability.triangleCut =>
+        onTarget(Cut(Ability.UseId.zero, now, myId, _))
+      case Ability.pentagonPentagonBullet =>
+        val direction = Complex.rotation(player.rotation)
+        send(CreatePentagonBullet(Ability.UseId.zero, now, myId, player.pos + player.shape.radius * direction,
+          CreatePentagonBullet.damage, direction.arg, player.colour), gameState, now)
+      case Ability.pentagonDispelId =>
+        onTarget(PentaDispel(Ability.UseId.zero, now, myId, _))
+      case Ability.createPentagonZoneId | Ability.hexagonHexagonZoneId =>
+        ChoosePosition(abilityId)
+      case other =>
+        Error(s"Ability $other is not supported yet")
+    }
   }
 
   /** Zones are placed where the player clicks. */
@@ -99,8 +107,21 @@ final class AbilityCaster(myId: Entity.Id) {
         }
     }
 
-  private def withTarget(ability: Entity.Id => Ability, target: Option[Entity.Id], gameState: GameState, now: Long) =
-    target.fold(Error("No target"))(targetId => send(ability(targetId), gameState, now))
+  /** On the target, or (like the frontend's `sendCastAbilityWithTarget`) on the mouse over entity when
+    * there is no target or the ability cannot be cast on it.
+    */
+  private def withTarget(ability: Entity.Id => Ability, target: Option[Entity.Id], mouseOver: => Option[Entity.Id],
+      gameState: GameState, now: Long): CastRequest = {
+    val onTarget = target.fold(Error("No target"))(targetId => send(ability(targetId), gameState, now))
+    onTarget match {
+      case sent: Send => sent
+      case failure =>
+        mouseOver.filterNot(target.contains)
+          .map(id => send(ability(id), gameState, now))
+          .collect { case sent: Send => sent }
+          .getOrElse(failure)
+    }
+  }
 
   private def send(ability: Ability, gameState: GameState, now: Long): CastRequest = {
     val action = EntityStartsCasting(GameAction.Id.zero, now, ability.castingTime, ability)

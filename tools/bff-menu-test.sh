@@ -16,6 +16,14 @@ set -euo pipefail
 
 BFF_DIR="${BFF_DIR:-$(cd "$(dirname "$0")/../../BattleForFlatland" && pwd)}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
+# Our servers need the ports of BFF's menu server (9000) and launcher (22223). If they are taken (e.g.
+# by servers started by hand), stop before doing anything: we would talk to those servers, and stop
+# their game servers.
+if ss -ltn | grep -qE ':(9000|22223)\b'; then
+  echo "Ports 9000 or 22223 are already in use (BFF servers running?): stop them first." >&2
+  exit 1
+fi
+
 WORK="$(mktemp -d)"
 
 stop_game_servers() {
@@ -24,6 +32,8 @@ stop_game_servers() {
 pids=()
 cleanup() {
   for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
+  # Wait for them to exit, so that the next run does not talk to the dying ones
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
   stop_game_servers
   rm -rf "$WORK"
 }

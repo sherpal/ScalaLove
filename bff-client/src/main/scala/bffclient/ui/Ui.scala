@@ -66,6 +66,9 @@ final class Ui {
   private var mouse: (Double, Double)                 = (0, 0)
   private var pressedAt: Option[(Double, Double)]     = None
   private var pressedThisFrame                        = false
+  private val buttons                                 = mutable.ArrayBuffer.empty[Int]
+  private var wheelY                                  = 0.0
+  private var inputEnabled                            = true
   private var releasedAt: Option[(Double, Double)]    = None
   private val typed                                   = new StringBuilder
   private val keys                                    = mutable.ArrayBuffer.empty[String]
@@ -73,8 +76,12 @@ final class Ui {
   private var focusClaimed                            = false
   private val fonts                                   = mutable.Map.empty[Int, Font]
 
-  def mousePressed(x: Double, y: Double, button: Int): Unit =
+  def mousePressed(x: Double, y: Double, button: Int): Unit = {
+    buttons += button
     if (button == 1) { pressedAt = Some((x, y)); pressedThisFrame = true }
+  }
+
+  def wheelMoved(dy: Double): Unit = wheelY += dy
 
   def mouseReleased(x: Double, y: Double, button: Int): Unit =
     if (button == 1) releasedAt = Some((x, y))
@@ -84,7 +91,31 @@ final class Ui {
   def keyPressed(scancode: String): Unit = keys += scancode
 
   /** Whether the key was pressed since the last frame (and not used by a text field). */
-  def wasPressed(scancode: String): Boolean = keys.contains(scancode)
+  def wasPressed(scancode: String): Boolean = inputEnabled && keys.contains(scancode)
+
+  /** The keys (scancodes) pressed since the last frame, and not used by a text field. */
+  def pressedKeys: Seq[String] = if (inputEnabled) keys.toSeq else Seq.empty
+
+  /** The mouse buttons (LÖVE's numbers: 1 left, 2 right, 3 middle, ...) pressed since the last frame. */
+  def pressedButtons: Seq[Int] = if (inputEnabled) buttons.toSeq else Seq.empty
+
+  /** How much the mouse wheel turned since the last frame (positive upwards). */
+  def wheel: Double = if (inputEnabled) wheelY else 0
+
+  /** Draws widgets which ignore the inputs (e.g. under a dialog). */
+  def inert(widgets: => Unit): Unit = {
+    val previous = inputEnabled
+    inputEnabled = false
+    widgets
+    inputEnabled = previous
+  }
+
+  /** Draws only inside `rect` (e.g. for a scrolling area). */
+  def clipped(rect: Rect)(widgets: => Unit): Unit = {
+    Graphics.setScissor(rect.x, rect.y, math.max(0.0, rect.width), math.max(0.0, rect.height))
+    widgets
+    Graphics.setScissor()
+  }
 
   def focused(input: TextInput): Boolean = focus.contains(input)
   def setFocus(input: TextInput): Unit   = focus = Some(input)
@@ -103,6 +134,8 @@ final class Ui {
     if (releasedAt.isDefined) pressedAt = None
     releasedAt = None
     pressedThisFrame = false
+    buttons.clear()
+    wheelY = 0
     typed.clear()
     keys.clear()
   }
@@ -156,12 +189,12 @@ final class Ui {
 
   // --- Widgets ---
 
-  def hovered(rect: Rect): Boolean = rect.contains(mouse)
+  def hovered(rect: Rect): Boolean = inputEnabled && rect.contains(mouse)
 
   private def clicked(rect: Rect): Boolean =
-    releasedAt.exists(rect.contains) && pressedAt.exists(rect.contains)
+    inputEnabled && releasedAt.exists(rect.contains) && pressedAt.exists(rect.contains)
 
-  private def held(rect: Rect): Boolean = pressedAt.exists(rect.contains) && rect.contains(mouse)
+  private def held(rect: Rect): Boolean = inputEnabled && pressedAt.exists(rect.contains) && rect.contains(mouse)
 
   /** Returns whether the button was clicked. */
   def button(label: String, rect: Rect, enabled: Boolean = true, style: ButtonStyle = ButtonStyle.Normal): Boolean =
@@ -181,8 +214,8 @@ final class Ui {
 
   /** A single line text field. Returns whether Enter was pressed in it. */
   def textField(input: TextInput, rect: Rect, placeholder: String = "", enabled: Boolean = true): Boolean = {
-    if (enabled && pressedThisFrame && pressedAt.exists(rect.contains)) { focus = Some(input); focusClaimed = true }
-    val hasFocus = enabled && focused(input)
+    if (enabled && inputEnabled && pressedThisFrame && pressedAt.exists(rect.contains)) { focus = Some(input); focusClaimed = true }
+    val hasFocus = enabled && inputEnabled && focused(input)
     var submitted = false
     if (hasFocus) {
       if (typed.nonEmpty) input.text = (input.text + typed.toString).take(input.maxLength)

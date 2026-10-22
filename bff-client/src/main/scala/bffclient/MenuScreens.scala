@@ -4,7 +4,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 import bffclient.ui.*
-import gamelogic.docs.BossMetadata
+import gamelogic.docs.{AbilityDoc, BossMetadata}
 import menus.data.{MenuGameComm, User}
 import models.bff.outofgame.{MenuGameWithPlayers, PlayerClasses}
 import models.bff.outofgame.gameconfig.*
@@ -30,12 +30,27 @@ final class MenuApp(val api: MenuApi, startGame: (GameAccess, GameExit => Unit) 
   private var screen: Screen = new LoginScreen(this)
   private var notification: Option[(String, Boolean, Double)] = None
 
+  /** The controls, over the current screen (which stays open, e.g. the lobby and its websocket). */
+  private var controlsEditor = Option.empty[ControlsEditor]
+
+  def showControls(): Unit = controlsEditor = Some(new ControlsEditor(() => controlsEditor = None))
+
   def install(): Unit = {
     Keyboard.setKeyRepeat(true)
     Love.draw = () => {
       Graphics.setBackgroundColor(Theme.background.r, Theme.background.g, Theme.background.b)
-      ui.frame { screen.draw(ui); drawNotification() }
+      ui.frame {
+        controlsEditor match {
+          case Some(editor) =>
+            ui.inert(screen.draw(ui))
+            val (width, height) = size
+            editor.draw(ui, width, height)
+          case None => screen.draw(ui)
+        }
+        drawNotification()
+      }
     }
+    Love.wheelmoved = (_, dy) => ui.wheelMoved(dy)
     Love.mousepressed = (x, y, button, _, _) => ui.mousePressed(x, y, button)
     Love.mousereleased = (x, y, button, _, _) => ui.mouseReleased(x, y, button)
     Love.textinput = text => ui.textInput(text)
@@ -70,6 +85,7 @@ final class MenuApp(val api: MenuApi, startGame: (GameAccess, GameExit => Unit) 
 
   /** The lobby websocket stays open during the game: the menu server kicks the players who leave it. */
   def gameStarts(access: GameAccess, user: User, lobby: Option[Lobby]): Unit = {
+    controlsEditor = None
     screen = new Screen { def draw(ui: Ui): Unit = ui.loading("Connecting to the game server", 40, 40) }
     startGame(access, exit => backToMenus(user, access.gameId, lobby, exit))
   }
@@ -201,7 +217,7 @@ final class GamesScreen(app: MenuApp, user: User)(using ExecutionContext) extend
     val gameYouAreIn = games.flatMap(_.find(_.containsPlayer(user)))
     gameYouAreIn match {
       case Some(game) =>
-        val strip = Rect(40, 100, width - 80, 50)
+        val strip = Rect(40, 100, width - 230, 50) // the controls button is on its right
         ui.fill(strip, Theme.primary.withAlpha(0.25))
         ui.textIn(s"You are currently involved in the game '${game.game.gameName}'.",
           Rect(strip.x + 16, strip.y, strip.width, strip.height), align = "left")
@@ -213,6 +229,8 @@ final class GamesScreen(app: MenuApp, user: User)(using ExecutionContext) extend
           create()
       case None => ()
     }
+
+    if (ui.button("Controls", Rect(width - 170, 105, 130, 40))) app.showControls()
 
     val table   = Rect(40, 180, width - 80, height - 220)
     val columns = Seq("Name" -> 0.0, "Created by" -> 0.4, "Players" -> 0.65)
@@ -263,6 +281,47 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
   private var busy        = false
   private var launching   = false
   private var startingSince = Option.empty[Double]
+
+  // The documentation panel: its tab, the class shown (ours unless another one was chosen), the scroll
+  private var docsTab      = "Boss"
+  private var browsedClass = Option.empty[PlayerClasses]
+  private var docsScroll   = 0.0
+  private var docsHeight   = 0.0
+
+  private def shownClass: PlayerClasses =
+    browsedClass.orElse(me.flatMap(_.maybePlayerClass)).getOrElse(PlayerClasses.Triangle)
+
+  /** Facts, description and abilities (the entity's own first, then each add's, like the frontend's):
+    * returns where it ends.
+    */
+  private def docs(ui: Ui, x: Double, top: Double, width: Double, facts: String, description: String,
+      abilities: Vector[AbilityDoc]): Double = {
+    var y = top
+    ui.text(facts, x, y, Theme.small, Theme.muted)
+    y += 22
+    y += ui.paragraph(description, x, y, width, Theme.small) + 14
+    val (own, adds) = abilities.partition(_.caster.isEmpty)
+    val byCaster    = adds.groupBy(_.caster.get).toVector.sortBy((caster, _) => adds.indexWhere(_.caster.contains(caster)))
+    for ((title, docs) <- ("Abilities" -> own) +: byCaster if docs.nonEmpty) {
+      ui.text(title, x, y, Theme.body, Theme.text)
+      y += 24
+      for (doc <- docs) {
+        val textLeft = Sprites.abilityIcons.get(doc.abilityId) match {
+          case Some(icon) =>
+            Graphics.setColor(1, 1, 1)
+            icon.draw(x + 12, y + 12, 0, 24, 24)
+            x + 32
+          case None => x
+        }
+        ui.text(doc.name, textLeft, y, Theme.small, Theme.primary.lighter(0.4))
+        val details = Seq(s"Cast: ${doc.castingTimeRepr}", s"Cooldown: ${doc.cooldownRepr}") ++ doc.maybeCostRepr.map(c => s"Cost: $c")
+        val detailsHeight = ui.paragraph(details.mkString("  ·  "), textLeft, y + 16, x + width - textLeft, Theme.small, Theme.muted)
+        y += 18 + detailsHeight
+        y += ui.paragraph(doc.description, textLeft, y, x + width - textLeft, Theme.small) + 10
+      }
+    }
+    y
+  }
   private def starting      = startingSince.isDefined
   private var gameStarted = false
   private var left        = false
@@ -418,29 +477,50 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
         ui.text(s"$name: ${errors.mkString(", ")}", left + 16, y + 24 + 20 * i, Theme.small, Theme.muted)
     }
 
-    // Boss
-    val bossPanel = Rect(right, 90, rightWidth, height - 180)
-    ui.panel(bossPanel)
-    ui.text("Boss", bossPanel.x + 16, bossPanel.y + 14, colour = Theme.muted)
-    if (amICreator)
-      ui.selector(BossMetadata.allBossNames, configuration.bossName, Rect(bossPanel.x + 70, bossPanel.y + 8, bossPanel.width - 86, 34),
-        enabled = enabled).foreach(changeBoss)
-    else ui.text(configuration.bossName, bossPanel.x + 70, bossPanel.y + 14)
-    boss.foreach { metadata =>
-      val inner = bossPanel.width - 32
-      ui.text(s"For ${metadata.intendedFor} player(s), ${metadata.maxLife.toInt} life points", bossPanel.x + 16,
-        bossPanel.y + 56, Theme.small, Theme.muted)
-      var textY = bossPanel.y + 84
-      textY += ui.paragraph(metadata.description, bossPanel.x + 16, textY, inner, Theme.small) + 12
-      for (doc <- metadata.abilitiesDoc if textY < bossPanel.bottom - 40) {
-        ui.text(doc.name, bossPanel.x + 16, textY, Theme.small, Theme.primary.lighter(0.4))
-        textY += 18 + ui.paragraph(doc.description, bossPanel.x + 16, textY + 18, inner, Theme.small, Theme.muted) + 8
+    // What the boss and the classes do, like the frontend's `GameDocs`
+    val docsPanel = Rect(right, 90, rightWidth, height - 180)
+    ui.panel(docsPanel)
+    ui.segmented(Seq("Boss", "Classes"), Some(docsTab), Rect(docsPanel.x + 12, docsPanel.y + 10, docsPanel.width - 24, 32))
+      .foreach { tab => docsTab = tab; docsScroll = 0 }
+    val chooserRect = Rect(docsPanel.x + 76, docsPanel.y + 52, docsPanel.width - 88, 34)
+    if (docsTab == "Boss") {
+      ui.text("Boss", docsPanel.x + 16, docsPanel.y + 58, colour = Theme.muted)
+      if (amICreator) ui.selector(BossMetadata.allBossNames, configuration.bossName, chooserRect, enabled = enabled).foreach(changeBoss)
+      else ui.textIn(configuration.bossName, chooserRect)
+    } else {
+      ui.text("Class", docsPanel.x + 16, docsPanel.y + 58, colour = Theme.muted)
+      ui.selector(PlayerClasses.allChoices, shownClass, chooserRect, (_: PlayerClasses).value).foreach { cls =>
+        browsedClass = Some(cls); docsScroll = 0
       }
     }
+    val docsArea = Rect(docsPanel.x + 1, docsPanel.y + 96, docsPanel.width - 2, docsPanel.height - 104)
+    if (ui.hovered(docsArea))
+      docsScroll = math.max(0.0, math.min(docsScroll - ui.wheel * 40, docsHeight - docsArea.height))
+    ui.clipped(docsArea) {
+      val top = docsArea.y - docsScroll
+      val end =
+        if (docsTab == "Boss") boss.fold(top)(metadata =>
+          docs(ui, docsArea.x + 15, top, docsArea.width - 30,
+            s"${metadata.maxLife.toInt} life points, for ${metadata.intendedFor} player(s)", metadata.description,
+            metadata.abilitiesDoc))
+        else {
+          val builder  = shownClass.builder
+          val resource = builder.initialResourceAmount
+          docs(ui, docsArea.x + 15, top, docsArea.width - 30,
+            s"${builder.initialMaxLife.toInt} life points, ${resource.amount.toInt} ${resource.resourceType.toString.toLowerCase}" +
+              (if (me.flatMap(_.maybePlayerClass).contains(shownClass)) " (your class)" else ""),
+            builder.description, builder.abilitiesDoc)
+        }
+      docsHeight = end + docsScroll - docsArea.y + 8
+    }
+    if (docsHeight > docsArea.height) // there is more: a scroll bar
+      ui.fill(Rect(docsArea.right - 5, docsArea.y + docsArea.height * docsScroll / docsHeight, 3,
+        docsArea.height * docsArea.height / docsHeight), Theme.muted.withAlpha(0.6))
 
     // Actions
     val bar = height - 70
     if (ui.button("Leave game", Rect(left, bar, 150, 44), enabled)) leaveGame()
+    if (ui.button("Controls", Rect(left + 160, bar, 130, 44))) app.showControls()
     if (amICreator) {
       // Like the menu server, which picks the classes of the AIs: all the players' classes count
       val classes = configuration.playersInfo.values.flatMap(_.maybePlayerClass).toVector

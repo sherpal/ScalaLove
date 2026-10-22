@@ -46,7 +46,9 @@ love tools/screenshot game/target/lua 60,120 w:30-90,1@100
 ```
 
 (`w:30-90` holds `w` from frame 30 to 90, `1@100` presses `1` at frame 100,
-`click@50:400:300` clicks at (400, 300) at frame 50, `text@20:hello` types
+`click@50:400:300` clicks at (400, 300) at frame 50, `mouse@40:400:300` moves
+the mouse there, `button@60:2` presses the right mouse button, `wheel@70:-3`
+turns the mouse wheel, `text@20:hello` types
 `hello` at frame 20. `SCREENSHOT_IDENTITY` sets the save directory, to run
 several instances at once.)
 
@@ -182,7 +184,11 @@ action bar (with what the target casts, and a lock when we face it), our cast
 bar above them, the boss's frame on top (life, and what it casts), the
 cooldowns of the boss's abilities on the top right, and the threat meter on the
 bottom right. Clicking the frame of a player or of the boss
-targets it (so that healers can target their team). Like the frontend's boss
+targets it (so that healers can target their team). With "mouse over" enabled in
+the controls (`mouseOverEnabled`, the frontend's option), the abilities with a
+target fall back to the entity whose frame is under the mouse when there is no
+target or the ability cannot be cast on it (e.g. heal the team while keeping the
+boss as target). The frame under the mouse is highlighted. Like the frontend's boss
 plugins, Boss 104 and Boss 105 tint the frames of the players with a twin
 debuff or a volatile charge, and Boss 102 counts its hounds.
 
@@ -224,6 +230,16 @@ frontend's Laminar pages (`MenuScreens.scala`):
 
 The pseudo, class, colour and boss are remembered in `menu.json` in LÖVE's save
 directory (the frontend keeps them in its local storage).
+
+In the lobby, the panel on the right documents the boss and the classes (life,
+resource, description, and each ability with its icon, cast time, cooldown and
+cost), like the frontend's `GameDocs`; it scrolls with the mouse wheel. The
+"Controls" button (also in the games' list) opens the controls, like the
+frontend's `ControlSettings`: click a binding, then press the key (possibly with
+Shift) or the mouse button to bind to it; keys bound twice are pointed out, the
+mouse over can be toggled, and everything can be reset. They are saved in
+`controls.json`, for the next game (mouse buttons are numbered like in the
+frontend, so the controls of its local storage still work).
 
 During the game, Escape opens a menu with "Resume" (or Escape again), "Leave
 game" and "Quit". The game cannot pause (it is played online): it goes on, and
