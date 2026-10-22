@@ -37,10 +37,11 @@ Other tasks (available on every Lua project):
 (Int/Long overflow, strings, case classes, enums, collections, exceptions,
 multiple return values, ...).
 
-To take a screenshot from inside LÖVE (useful to check rendering from a script):
+To take screenshots from inside LÖVE (useful to check rendering from a script),
+optionally simulating held keys:
 
 ```bash
-love tools/screenshot game/target/lua 120
+love tools/screenshot game/target/lua 60,120 w:30-90
 ```
 
 ## Experiment: Battle for Flatland's game logic
@@ -105,7 +106,11 @@ tools/bff-online-test.sh
 
 The script starts the game server with a one-player Boss 101 game (the game
 info normally sent by the launcher is built by `bffsim.MakeGameInfo`), runs the
-client, and stops everything. Result: the handshake completes, the boss's AI
+client, and stops everything. With `tools/bff-online-test.sh --window`, the
+client opens a window and renders the game state with `love.graphics`
+(`bff-client/.../Renderer.scala`, modelled on the Indigo drawers: camera on the
+player, obstacles, boss, players in their colours, other bodies as outlines,
+life and casting bars, a small HUD), and you can move with WASD. Result: the handshake completes, the boss's AI
 kills our idle triangle in ~13 s (as seen from the client-side game state), our
 movement is applied and echoed by the server, and the ping round trip is 2-4 ms.
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Plays a one-player Boss 101 game against a real Battle for Flatland game server,
-# with the headless LÖVE client of bff-client/.
+# with the LÖVE client of bff-client/: headless and scripted by default, or in a
+# window with `--window` (WASD to move, Escape to quit).
 #
 # Prerequisites:
 #   - in BattleForFlatland: shared published locally (see README) and `sbt game-server/assembly`
@@ -36,6 +37,10 @@ pids+=($!)
 for _ in $(seq 1 60); do grep -q "Server is warned" "$WORK/game-server.log" && break; sleep 0.5; done
 grep -q "Server is warned" "$WORK/game-server.log" || { cat "$WORK/game-server.log"; exit 1; }
 
-# 4. The Lua client
-BFF_HOST=127.0.0.1 BFF_PORT="$PORT" BFF_USER="$USER_NAME" BFF_SECRET="$USER_SECRET" BFF_GAME_ID="$GAME_ID" \
-  timeout 100 love "$HERE/bff-client/target/lua"
+# 4. The Lua client: headless (scripted) by default, in a window with --window (WASD to move)
+export BFF_HOST=127.0.0.1 BFF_PORT="$PORT" BFF_USER="$USER_NAME" BFF_SECRET="$USER_SECRET" BFF_GAME_ID="$GAME_ID"
+if [[ "${1:-}" == "--window" ]]; then
+  love "$HERE/bff-client/target/lua"
+else
+  BFF_HEADLESS=1 timeout 100 love "$HERE/bff-client/target/lua"
+fi

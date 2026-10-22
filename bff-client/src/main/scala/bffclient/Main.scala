@@ -8,19 +8,22 @@ import gamelogic.entities.Entity
 import gamelogic.entities.classes.Constants
 import gamelogic.gamestate.{ActionGatherer, GameAction, GameState, GreedyActionGatherer}
 import gamelogic.gamestate.gameactions.MovingBodyMoves
+import gamelogic.physics.Complex
 import models.bff.ingame.InGameWSProtocol
 import models.bff.ingame.InGameWSProtocol.*
 
 /** Connects to a real Battle for Flatland game server, plays the start-of-game handshake like the
-  * frontend, then keeps a client-side copy of the game state from the server's updates.
+  * frontend, keeps a client-side copy of the game state from the server's updates, and renders it.
   *
   * Configuration via environment variables: BFF_HOST, BFF_PORT, BFF_USER, BFF_SECRET, BFF_GAME_ID.
+  * With BFF_HEADLESS set, there is no window: the client walks a bit, logs, and quits at the end.
   */
 object Main {
   def main(args: Array[String]): Unit = {
     def env(name: String, default: String): String = Option(Os.getenv(name)).getOrElse(default)
-    val user   = env("BFF_USER", "alice")
-    val url    = s"ws://${env("BFF_HOST", "localhost")}:${env("BFF_PORT", "22223")}/ws/connect" +
+    val user     = env("BFF_USER", "alice")
+    val headless = Os.getenv("BFF_HEADLESS") != null
+    val url      = s"ws://${env("BFF_HOST", "localhost")}:${env("BFF_PORT", "22223")}/ws/connect" +
       s"?userName=$user&secret=${env("BFF_SECRET", "secret")}&gameId=${env("BFF_GAME_ID", "game")}"
     println(s"Connecting to $url")
     val connection = WebSocketModule.connect(url)
@@ -29,26 +32,38 @@ object Main {
       Event.quit(1)
     } else {
       println("Connected")
-      val client = new GameClient(connection.socket, user)
+      val client = new GameClient(connection.socket, user, headless)
       Love.update = dt => client.update(dt)
+      if (!headless) {
+        val renderer = new Renderer(client)
+        Love.draw = () => renderer.draw()
+        Love.keypressed = (key, _, _) => if (key == "escape") client.quit()
+      }
     }
   }
 }
 
-final class GameClient(ws: WebSocket, user: String) {
+final class GameClient(ws: WebSocket, user: String, headless: Boolean) {
   private var gatherer: ActionGatherer = GreedyActionGatherer(GameState.empty)
-  private var myId: Option[Entity.Id]  = None
+  var myId: Option[Entity.Id]          = None
+  var messagesReceived                 = 0
+  var roundTrip                        = -1L
   private var elapsed                  = 0.0
   private var lastStatus               = 0.0
   private var pingCount                = 0
-  private var messagesReceived         = 0
   private var actionsReceived          = 0
   private var bytesReceived            = 0L
-  private var lastRoundTrip            = -1L
+  private var clockOffset              = 0L
   private var gameBeganAt: Option[Double] = None
-  private var movementsSent            = 0
+  private var scriptedMovements        = 0
+  private var lastInput: Option[Complex] = None
 
   send(Ready(user))
+
+  def gameState: GameState = gatherer.currentGameState
+
+  /** Estimate of the server's clock (from the ping/pong exchanges), used to interpolate positions. */
+  def serverNow: Long = System.currentTimeMillis() + clockOffset
 
   private def send(message: InGameWSProtocol): Unit = {
     val buffer = Pickle.intoBytes[InGameWSProtocol](message)
@@ -57,7 +72,21 @@ final class GameClient(ws: WebSocket, user: String) {
     ws.send(ScalaLove.bytesToString(bytes))
   }
 
-  private def gameState: GameState = gatherer.currentGameState
+  private def sendMovement(direction: Complex, moving: Boolean): Unit =
+    for (id <- myId; me <- gameState.players.get(id)) {
+      val now      = serverNow
+      val position = me.currentPosition(now)
+      val angle    = if (moving) direction.arg else me.direction
+      val rotation = if (moving) direction.arg else me.rotation
+      send(GameActionWrapper(Vector(
+        MovingBodyMoves(GameAction.Id.zero, now, id, position, angle, rotation, Constants.playerSpeed, moving)
+      )))
+    }
+
+  def quit(): Unit = {
+    ws.close()
+    Event.quit(0)
+  }
 
   def update(dt: Double): Unit = {
     elapsed += dt
@@ -74,49 +103,60 @@ final class GameClient(ws: WebSocket, user: String) {
       lastStatus = elapsed
       pingCount += 1
       send(Ping(System.currentTimeMillis(), s"ping-$pingCount"))
-      println(status)
+      if (headless) println(status)
     }
 
-    // Two seconds after the start, walk towards the boss for one second, through the server
-    for (began <- gameBeganAt; id <- myId; me <- gameState.players.get(id); boss <- gameState.bosses.values.headOption) {
-      val now = System.currentTimeMillis()
-      if (movementsSent == 0 && elapsed - began > 2) {
-        val myPos     = me.currentPosition(now)
-        val direction = (boss.currentPosition(now) - myPos).arg
-        println(s"Sending a movement towards the boss from $myPos")
-        send(GameActionWrapper(Vector(
-          MovingBodyMoves(GameAction.Id.zero, now, id, myPos, direction, direction, Constants.playerSpeed, moving = true)
-        )))
-        movementsSent += 1
-      } else if (movementsSent == 1 && elapsed - began > 3) {
-        val myPos = me.currentPosition(now)
-        println(s"Sending a stop at $myPos")
-        send(GameActionWrapper(Vector(
-          MovingBodyMoves(GameAction.Id.zero, now, id, myPos, me.direction, me.rotation, Constants.playerSpeed, moving = false)
-        )))
-        movementsSent += 1
-      }
+    if (gameBeganAt.isDefined && !gameState.ended) {
+      if (headless) scriptedMovement() else keyboardMovement()
     }
 
-    if (gameState.ended || elapsed > 60 || !ws.isOpen()) {
+    if (headless && (gameState.ended || elapsed > 60 || !ws.isOpen())) {
       println(status)
       println(
         s"Finished: game ended=${gameState.ended}, players won=${gameState.playersWon}, " +
           s"socket open=${ws.isOpen()}, $messagesReceived messages ($bytesReceived bytes), $actionsReceived actions"
       )
-      ws.close()
-      Event.quit(0)
+      quit()
     }
   }
+
+  /** WASD: the direction is sent to the server when it changes (the screen's up is the world's +i). */
+  private def keyboardMovement(): Unit = {
+    var direction = Complex.zero
+    if (Keyboard.isDown("w")) direction += Complex.i
+    if (Keyboard.isDown("s")) direction -= Complex.i
+    if (Keyboard.isDown("a")) direction -= Complex(1, 0)
+    if (Keyboard.isDown("d")) direction += Complex(1, 0)
+    val input = Option.when(direction != Complex.zero)(direction)
+    if (input != lastInput) {
+      lastInput = input
+      sendMovement(input.getOrElse(Complex.zero), moving = input.isDefined)
+    }
+  }
+
+  /** Two seconds after the start, walk towards the boss for one second. */
+  private def scriptedMovement(): Unit =
+    for (began <- gameBeganAt; boss <- gameState.bosses.values.headOption; id <- myId; me <- gameState.players.get(id)) {
+      if (scriptedMovements == 0 && elapsed - began > 2) {
+        val now = serverNow
+        println(s"Sending a movement towards the boss from ${me.currentPosition(now)}")
+        sendMovement(boss.currentPosition(now) - me.currentPosition(now), moving = true)
+        scriptedMovements += 1
+      } else if (scriptedMovements == 1 && elapsed - began > 3) {
+        println(s"Sending a stop at ${me.currentPosition(serverNow)}")
+        sendMovement(Complex.zero, moving = false)
+        scriptedMovements += 1
+      }
+    }
 
   private def status: String = {
     val bosses = gameState.bosses.values.map(b => s"${b.name} life=${math.round(b.life)}").mkString(", ")
     val me = myId.flatMap(gameState.players.get).fold("-") { p =>
-      val pos = p.currentPosition(System.currentTimeMillis())
+      val pos = p.currentPosition(serverNow)
       s"life=${math.round(p.life)} pos=(${math.round(pos.re)}, ${math.round(pos.im)})"
     }
     s"[t=${math.round(elapsed * 10) / 10.0}s] messages=$messagesReceived actions=$actionsReceived entities=${gameState.entities.size} " +
-      s"boss: [$bosses] me: $me rtt=${lastRoundTrip}ms started=${gameState.started} ended=${gameState.ended}"
+      s"boss: [$bosses] me: $me rtt=${roundTrip}ms started=${gameState.started} ended=${gameState.ended}"
   }
 
   private def handle(message: InGameWSProtocol): Unit = message match {
@@ -139,8 +179,10 @@ final class GameClient(ws: WebSocket, user: String) {
       gatherer = gatherer.slaveAddAndRemoveActions(toAdd, oldestTimeToRemove, idsToRemove)
     case RemoveActions(oldestTime, ids) =>
       gatherer = gatherer.slaveAddAndRemoveActions(Vector.empty, oldestTime, ids)
-    case Pong(originalSendingTime, _, _) =>
-      lastRoundTrip = System.currentTimeMillis() - originalSendingTime
+    case Pong(originalSendingTime, midwayDistantTime, _) =>
+      val now = System.currentTimeMillis()
+      roundTrip = now - originalSendingTime
+      clockOffset = midwayDistantTime - (originalSendingTime + now) / 2
     case HeartBeat =>
       ()
     case other =>

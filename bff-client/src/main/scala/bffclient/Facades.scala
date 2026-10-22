@@ -35,7 +35,31 @@ object Os extends js.Object {
 
 @js.native @JSGlobal("love")
 object Love extends js.Object {
-  var update: js.Function1[Double, Unit] = js.native
+  var update: js.Function1[Double, Unit]                      = js.native
+  var draw: js.Function0[Unit]                                = js.native
+  var keypressed: js.Function3[String, String, Boolean, Unit] = js.native
+  /** Not null when the graphics module is enabled (i.e. not headless). */
+  val graphics: js.Any = js.native
+}
+
+@js.native @JSGlobal("love.graphics")
+object Graphics extends js.Object {
+  def setBackgroundColor(r: Double, g: Double, b: Double): Unit                       = js.native
+  def setColor(r: Double, g: Double, b: Double, a: Double = 1.0): Unit                = js.native
+  def setLineWidth(width: Double): Unit                                               = js.native
+  def rectangle(mode: String, x: Double, y: Double, width: Double, height: Double): Unit = js.native
+  def circle(mode: String, x: Double, y: Double, radius: Double): Unit                = js.native
+  def line(x1: Double, y1: Double, x2: Double, y2: Double): Unit                      = js.native
+  /** `coords` are x1, y1, x2, y2, ... (filled polygons must be convex). */
+  def polygon(mode: String, coords: Double*): Unit                                    = js.native
+  def print(text: String, x: Double, y: Double): Unit                                 = js.native
+  def printf(text: String, x: Double, y: Double, limit: Double, align: String): Unit  = js.native
+  def getDimensions(): (width: Int, height: Int)                                      = js.native
+}
+
+@js.native @JSGlobal("love.keyboard")
+object Keyboard extends js.Object {
+  def isDown(key: String): Boolean = js.native
 }
 
 @js.native @JSGlobal("love.event")
