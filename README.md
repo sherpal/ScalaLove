@@ -212,14 +212,17 @@ lines show our predicted position next to the server's.
 
 ### Through the menu server
 
-With `BFF_MENU_URL`, the client first goes through BFF's menu server, over HTTP
-and the lobby websocket, like the browser frontend, with the game's own
-request/response types and circe codecs (`MenuApi.scala`).
+In a window, the client first goes through BFF's menu server, over HTTP and the
+lobby websocket, like the browser frontend, with the game's own request/response
+types and circe codecs (`MenuApi.scala`). Headless, it does so with
+`BFF_MENU_URL` (with `BFF_HOST`, it connects directly to a game server).
 
-In a window, the menus have a UI drawn with love.graphics, replacing the
-frontend's Laminar pages (`MenuScreens.scala`):
+The menus have a UI drawn with love.graphics, replacing the frontend's Laminar
+pages (`MenuScreens.scala`):
 
-* **login**: choose a pseudo (validated with BFF's `LoginUser.validator`);
+* **login**: type the menu server's address (`host` or `host:port`, port 9000
+  by default; `BFF_MENU_URL` fills it in) and choose a pseudo (validated with
+  BFF's `LoginUser.validator`);
 * **games**: the games that did not start, refreshed live from the lobby
   websocket; create one, or join one (or join back the one you are in);
 * **game lobby**: the players with their class, colour and readiness; choose
@@ -228,7 +231,7 @@ frontend's Laminar pages (`MenuScreens.scala`):
   game once `GameConfiguration.validate` has nothing to say. The game server
   credentials then arrive on the lobby websocket, and the game starts.
 
-The pseudo, class, colour and boss are remembered in `menu.json` in LÖVE's save
+The server, pseudo, class, colour and boss are remembered in `menu.json` in LÖVE's save
 directory (the frontend keeps them in its local storage).
 
 In the lobby, the panel on the right documents the boss and the classes (life,
@@ -282,6 +285,52 @@ everything. Note that BFF's game servers keep running after their game and
 always use port 22222, so a second game needs the first game server to be
 stopped: the client does it when going back to the menus, and the script stops
 the leftovers.
+
+### Playing with friends
+
+`sbt bffClient/luaPackage` packages the client with LÖVE's own release builds,
+so that players do not need to install LÖVE (see
+[Game Distribution](https://love2d.org/wiki/Game_Distribution)). It links the
+client, zips it into `bff-client/target/dist/BattleForFlatland.love`, and writes
+next to it:
+
+* `BattleForFlatland-windows.zip`: `BattleForFlatland.exe` (`love.exe` with the
+  game appended, which LÖVE runs) and LÖVE's DLLs;
+* `BattleForFlatland-macos.zip`: `Battle for Flatland.app` (LÖVE's `love.app`
+  with the game in its resources, and its own name and identifier);
+* `BattleForFlatland-linux.tar.gz`: LÖVE's AppImage, the game, and a
+  `BattleForFlatland` launcher (which runs the AppImage without FUSE, often not
+  installed nowadays).
+
+`luaPackage` works for any project compiled to Lua (`project/LovePackage.scala`;
+`luaPackageTitle` names the game). LÖVE's builds (11.5) are downloaded once into
+`target/love-11.5`, and their archives are copied entry by entry (with
+commons-compress), keeping the Unix modes and the symbolic links of the macOS
+app. `BFF_CLIENT=<launcher> tools/bff-menu-test.sh` plays a game with the Linux
+package.
+
+The packages are not signed: on Windows, SmartScreen asks to confirm ("More
+info", then "Run anyway"); on macOS, the app must be unquarantined and signed
+again (the game added to LÖVE's app breaks its signature), in a terminal, once:
+
+```bash
+xattr -cr "Battle for Flatland.app"
+codesign --force --deep --sign - "Battle for Flatland.app"
+```
+
+To host the game, run BFF's menu server and game server launcher as usual
+(`server/reStart` listens on all interfaces; not with `-DisProd=false`, which
+only listens on 127.0.0.1), and forward TCP ports **9000** (menu server) and
+**22222** (game servers) of the router to that machine (and open them in its
+firewall, if any). The launcher's port (22223) stays private. Players then
+type the router's public address on the login screen, e.g. `81.12.34.56`
+(port 9000 by default); the game server is reached at the same address. When
+the address changes, they type the new one (or use a dynamic DNS name: host
+names work too). From the hosting machine itself, use `127.0.0.1`. BFF has no
+passwords: anyone with the address can log in, with any pseudo.
+
+The connection is plain HTTP and websockets (LuaSocket has no TLS), like the
+frontend talking to a local server.
 
 ## How it works
 

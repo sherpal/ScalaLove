@@ -6,6 +6,8 @@ lazy val luaOutput = settingKey[File]("Directory where the Lua program is writte
 lazy val luaLink = taskKey[File]("Link the program to Lua (main.lua)")
 lazy val luaRun = taskKey[Unit]("Link the game to Lua and run it with LÖVE")
 lazy val luaTest = taskKey[Unit]("Link the program to Lua and run it headlessly with LuaJIT")
+lazy val luaPackage = taskKey[Seq[File]]("Package the game with LÖVE for Windows, macOS and Linux (in target/dist)")
+lazy val luaPackageTitle = settingKey[String]("The packaged game's name (in camel case, the packages' file names)")
 lazy val luaProbe = taskKey[Unit]("Print statistics about the linked IR (set DUMP_CLASS=a.B,c.D to dump classes)")
 
 // The Scala.js IR -> Lua linker. Plain JVM project.
@@ -41,6 +43,9 @@ def luaProject(p: Project): Project = p
       val dir = luaLink.value
       scala.sys.process.Process(Seq("love", dir.getAbsolutePath)).!
     },
+    luaPackageTitle := name.value,
+    luaPackage := LovePackage(luaLink.value, luaPackageTitle.value,
+      (LocalRootProject / target).value / s"love-${LovePackage.loveVersion}", target.value / "dist", streams.value.log),
     luaTest := {
       val dir = luaLink.value
       val tool = (LocalRootProject / baseDirectory).value / "tools" / "headless.lua"
@@ -118,6 +123,7 @@ lazy val bffClient = luaProject(project.in(file("bff-client")))
   .settings(
     scalaVersion := "3.9.0",
     libraryDependencies += "local.bff" %%% "shared" % bffVersion,
+    luaPackageTitle := "Battle for Flatland",
     bffDir := sys.env.get("BFF_DIR").map(file)
       .getOrElse((ThisBuild / baseDirectory).value.getParentFile / "BattleForFlatland"),
     // The images are copied from the BFF checkout (like its code, they are not copied in this repo)

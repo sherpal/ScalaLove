@@ -12,6 +12,9 @@ import models.bff.outofgame.gameconfig.{GameConfiguration, PlayerInfo}
 final class MenuApi(val host: String, val port: Int)(using ExecutionContext) {
   private val http = new HttpClient(s"http://$host:$port")
 
+  /** How the address is shown (and remembered). */
+  def address: String = s"$host:$port"
+
   def sessionCookie: String = http.sessionCookie
 
   /** Logs in (the menu server only asks for a name) and returns the logged in user. */
@@ -70,6 +73,25 @@ final class MenuApi(val host: String, val port: Int)(using ExecutionContext) {
     val connection = WebSocketModule.connect(s"ws://$host:$port/ws/bff/game-anti-chamber$query", 5, sessionCookie)
     if (connection.socket == null) Future.failed(HttpError(s"Lobby websocket: ${connection.error}"))
     else Future.successful(new Lobby(connection.socket, onMessage))
+  }
+}
+
+object MenuApi {
+  val defaultPort = 9000
+
+  /** The host and port of an address typed by a player: `host`, `host:port`, possibly with `http://`
+    * and a trailing slash. Without a port, the menu server's default one.
+    */
+  def parseAddress(address: String): Either[String, (String, Int)] = {
+    val trimmed = address.trim.stripPrefix("http://").stripSuffix("/")
+    if (address.trim.startsWith("https://")) Left("https is not supported, use http://")
+    else
+      trimmed.split(":") match {
+        case Array(host) if host.nonEmpty => Right((host, defaultPort))
+        case Array(host, port) if host.nonEmpty =>
+          port.toIntOption.filter(p => p > 0 && p < 65536).map(p => (host, p)).toRight(s"Invalid port: $port")
+        case _ => Left(s"Invalid address: $address (expected host or host:port)")
+      }
   }
 }
 

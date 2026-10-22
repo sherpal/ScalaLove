@@ -5,6 +5,8 @@
 #   --window                    plays in a window, with the menus' UI
 #   --screenshot FRAMES EVENTS  runs the window through tools/screenshot (see there), e.g.
 #                               --screenshot 30,90 "text@10:alice,return@20"
+# BFF_CLIENT runs another client than bff-client/target/lua (headless or --window), e.g. the Linux
+# package of `sbt bffClient/luaPackage`: BFF_CLIENT=path/to/BattleForFlatland/BattleForFlatland
 #
 # Runs the menu server (in a temporary working directory, where it keeps its JSON "database"),
 # the game server launcher, and stops them (and the game server) at the end.
@@ -59,10 +61,12 @@ done
 curl -s -o /dev/null http://127.0.0.1:9000/api/users/me || { tail "$WORK/menu-server.log"; exit 1; }
 
 export BFF_MENU_URL=http://127.0.0.1:9000 BFF_USER="${BFF_USER:-alice}" BFF_CLASS="${BFF_CLASS:-Triangle}"
+client=(love "$HERE/bff-client/target/lua")
+[[ -z "${BFF_CLIENT:-}" ]] || client=("$BFF_CLIENT")
 if [[ "${1:-}" == "--window" ]]; then
-  love "$HERE/bff-client/target/lua"
+  "${client[@]}"
 elif [[ "${1:-}" == "--screenshot" ]]; then
   timeout 180 love "$HERE/tools/screenshot" "$HERE/bff-client/target/lua" "$2" "${3:-}"
 else
-  BFF_HEADLESS=1 timeout 120 love "$HERE/bff-client/target/lua"
+  BFF_HEADLESS=1 timeout 120 "${client[@]}"
 fi

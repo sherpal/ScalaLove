@@ -23,7 +23,7 @@ import bffclient.ui.Ui
 /** Connects to a real Battle for Flatland game server, plays the start-of-game handshake like the
   * frontend, keeps a client-side copy of the game state from the server's updates, and renders it.
   *
-  * Configuration via environment variables: BFF_HOST, BFF_PORT, BFF_USER, BFF_SECRET, BFF_GAME_ID.
+  * Configuration via environment variables (see [[main]]). The menus are the default in a window.
   * With BFF_HEADLESS set, there is no window: the client walks a bit, logs, and quits at the end.
   */
 object Main {
@@ -31,37 +31,35 @@ object Main {
 
   private def env(name: String, default: String): String = Option(Os.getenv(name)).getOrElse(default)
 
-  /** With BFF_MENU_URL (e.g. http://127.0.0.1:9000), goes through the menu server first: with the
-    * menus' UI, or scripted when headless (BFF_USER, BFF_CLASS, BFF_BOSS). Otherwise, connects
-    * directly to a game server (BFF_HOST, BFF_PORT, BFF_SECRET, BFF_GAME_ID).
+  /** In a window, starts with the menus' UI, where the player types the menu server's address
+    * (BFF_MENU_URL, e.g. http://127.0.0.1:9000, fills it in). Headless, plays the menus with a script
+    * (BFF_MENU_URL, BFF_USER, BFF_CLASS, BFF_BOSS). With BFF_HOST (or headless without BFF_MENU_URL),
+    * connects directly to a game server (BFF_HOST, BFF_PORT, BFF_SECRET, BFF_GAME_ID).
     */
   def main(args: Array[String]): Unit = {
     val user     = env("BFF_USER", "alice")
     val headless = Os.getenv("BFF_HEADLESS") != null
-    Option(Os.getenv("BFF_MENU_URL")) match {
-      case Some(menuUrl) =>
-        val (host, port) = menuUrl.stripPrefix("http://").split(":") match {
-          case Array(h, p) => (h, p.toInt)
-          case Array(h)    => (h, 80)
-          case _           => sys.error(s"Invalid BFF_MENU_URL $menuUrl")
+    val menuUrl  = Option(Os.getenv("BFF_MENU_URL"))
+    menuUrl match {
+      case Some(url) if headless =>
+        val (host, port) = MenuApi.parseAddress(url).fold(message => sys.error(s"BFF_MENU_URL: $message"), identity)
+        val api         = new MenuApi(host, port)
+        val playerClass = PlayerClasses.playerClassByName(env("BFF_CLASS", "Triangle")).getOrElse(PlayerClasses.Triangle)
+        val menu        = new MenuSession(api, user, playerClass, env("BFF_BOSS", "Boss 101"))
+        menu.run().onComplete {
+          case Success(access) => startGame(access, headless)
+          case Failure(error) =>
+            menu.info(s"ERROR: ${error.getMessage}")
+            Event.quit(1)
         }
-        val api = new MenuApi(host, port)
-        if (headless) {
-          val playerClass = PlayerClasses.playerClassByName(env("BFF_CLASS", "Triangle")).getOrElse(PlayerClasses.Triangle)
-          val menu        = new MenuSession(api, user, playerClass, env("BFF_BOSS", "Boss 101"))
-          menu.run().onComplete {
-            case Success(access) => startGame(access, headless)
-            case Failure(error) =>
-              menu.info(s"ERROR: ${error.getMessage}")
-              Event.quit(1)
-          }
-        } else new MenuApp(api, (access, backToMenus) => startGame(access, headless, Some(backToMenus))).install()
-      case None =>
+      case None if headless || Os.getenv("BFF_HOST") != null =>
         startGame(
           GameAccess(env("BFF_HOST", "localhost"), env("BFF_PORT", "22223").toInt, user,
             env("BFF_GAME_ID", "game"), env("BFF_SECRET", "secret")),
           headless
         )
+      case _ =>
+        new MenuApp(menuUrl, (access, backToMenus) => startGame(access, headless, Some(backToMenus))).install()
     }
   }
 

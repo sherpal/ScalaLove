@@ -10,6 +10,8 @@ import utils.misc.RGBColour
   * things in its local storage).
   */
 final case class MenuPreferences(
+    /** The menu server's address, as typed on the login screen. */
+    server: Option[String],
     userName: String,
     playerClass: Option[PlayerClasses],
     colour: Option[RGBColour],
@@ -27,7 +29,7 @@ object MenuPreferences {
   given Codec[MenuPreferences] = io.circe.generic.semiauto.deriveCodec
 
   def load(): MenuPreferences = {
-    val empty = MenuPreferences("", None, None, None)
+    val empty = MenuPreferences(None, "", None, None, None)
     if (Filesystem.getInfo(fileName) == null) empty
     else decode[MenuPreferences](Filesystem.read(fileName).contents).getOrElse(empty)
   }

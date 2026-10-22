@@ -3,6 +3,9 @@ require("love.thread")
 local http = require("socket.http")
 local ltn12 = require("ltn12")
 
+-- Not LuaSocket's 60 s: a wrong server address should not hang the menus for a minute
+http.TIMEOUT = 10
+
 local requests = love.thread.getChannel("scalalove_http_requests")
 local responses = love.thread.getChannel("scalalove_http_responses")
 
