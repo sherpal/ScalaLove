@@ -20,9 +20,11 @@ trait Screen {
 }
 
 /** The menus, drawn with [[Ui]] like the frontend's pages: login, games, then the game's lobby,
-  * until the game server credentials arrive and `startGame` takes over.
+  * until the game server credentials arrive and `startGame` takes over. The game comes back to the
+  * menus with the function it is given.
   */
-final class MenuApp(val api: MenuApi, startGame: GameAccess => Unit)(using ExecutionContext) {
+final class MenuApp(val api: MenuApi, startGame: (GameAccess, GameExit => Unit) => Unit)(using
+    ExecutionContext) {
   val ui                     = new Ui
   var preferences            = MenuPreferences.load()
   private var screen: Screen = new LoginScreen(this)
@@ -30,7 +32,10 @@ final class MenuApp(val api: MenuApi, startGame: GameAccess => Unit)(using Execu
 
   def install(): Unit = {
     Keyboard.setKeyRepeat(true)
-    Love.draw = () => ui.frame { screen.draw(ui); drawNotification() }
+    Love.draw = () => {
+      Graphics.setBackgroundColor(Theme.background.r, Theme.background.g, Theme.background.b)
+      ui.frame { screen.draw(ui); drawNotification() }
+    }
     Love.mousepressed = (x, y, button, _, _) => ui.mousePressed(x, y, button)
     Love.mousereleased = (x, y, button, _, _) => ui.mouseReleased(x, y, button)
     Love.textinput = text => ui.textInput(text)
@@ -63,9 +68,32 @@ final class MenuApp(val api: MenuApi, startGame: GameAccess => Unit)(using Execu
     preferences.save()
   }
 
-  def gameStarts(access: GameAccess): Unit = {
+  /** The lobby websocket stays open during the game: the menu server kicks the players who leave it. */
+  def gameStarts(access: GameAccess, user: User, lobby: Option[Lobby]): Unit = {
     screen = new Screen { def draw(ui: Ui): Unit = ui.loading("Connecting to the game server", 40, 40) }
-    startGame(access)
+    startGame(access, exit => backToMenus(user, access.gameId, lobby, exit))
+  }
+
+  /** The menu server never ends games by itself (players stay "already playing" until it sees them
+    * disconnected from the lobby for a while), so we leave the game, which deletes it for its creator.
+    */
+  private def backToMenus(user: User, gameId: String, lobby: Option[Lobby], exit: GameExit): Unit = {
+    Love.update = null
+    Love.keyreleased = null
+    install()
+    exit match {
+      case GameExit.Ended =>
+        // Fails when another player stopped it already
+        api.stopGameServer(gameId).failed.foreach(failure => println(s"[menu] Game server not stopped: ${failure.getMessage}"))
+      case GameExit.ConnectionLost       => notify("The connection to the game server was lost", isError = true)
+      case GameExit.CannotConnect(error) => notify(s"Cannot connect to the game server: $error", isError = true)
+    }
+    lobby.foreach(_.close())
+    screen = new Screen { def draw(ui: Ui): Unit = ui.loading("Leaving the game", 40, 40) }
+    api.leaveGame(gameId).onComplete { result =>
+      result.failed.foreach(failure => notify(s"Could not leave the game: ${failure.getMessage}", isError = true))
+      show(new GamesScreen(this, user))
+    }
   }
 
   private def drawNotification(): Unit = notification.foreach { (message, isError, until) =>
@@ -143,10 +171,20 @@ final class LoginScreen(app: MenuApp)(using ExecutionContext) extends Screen {
 /** The games that did not start yet, like the frontend's `GameTable`. */
 final class GamesScreen(app: MenuApp, user: User)(using ExecutionContext) extends Screen {
   private var games         = Option.empty[Vector[MenuGameWithPlayers]]
-  private val refresh       = Refresh(app, () => app.api.games)(all => games = Some(all.filterNot(_.started)))
+  private val refresh       = Refresh(app, () => app.api.games)(received)
   private var lobby         = Option.empty[Lobby]
   private var busy          = false
-  private val newGameName   = TextInput(s"${user.name}'s game", maxLength = 32)
+  private val defaultName   = s"${user.name}'s game"
+  private val newGameName   = TextInput(defaultName, maxLength = 32)
+
+  private def received(all: Vector[MenuGameWithPlayers]): Unit = {
+    games = Some(all.filterNot(_.started))
+    // Names are unique, and started games (not shown) keep theirs
+    if (newGameName.text.startsWith(defaultName)) {
+      val taken = all.map(_.game.gameName).toSet
+      newGameName.text = (Iterator.single(defaultName) ++ Iterator.from(2).map(i => s"$defaultName $i")).find(!taken(_)).get
+    }
+  }
 
   refresh()
   // Any change on the server is announced on the lobby websocket
@@ -223,24 +261,30 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
   private var lobby       = Option.empty[Lobby]
   private var busy        = false
   private var launching   = false
-  private var starting    = false
+  private var startingSince = Option.empty[Double]
+  private def starting      = startingSince.isDefined
   private var gameStarted = false
+  private var left        = false
   private var preferencesApplied = false
   private val refresh = Refresh(app, () => app.api.game(gameId))(received)
 
   refresh()
   app.attempt(app.api.lobby(Some(gameId)) {
     case MenuGameComm.DataUpdated() => refresh()
-    case MenuGameComm.GameStarted() => starting = true
+    case MenuGameComm.GameStarted() => startingSince = Some(Timer.getTime())
     case MenuGameComm.HereAreYourCredentials(id, secret, port) =>
       gameStarted = true
-      app.gameStarts(GameAccess(app.api.host, port, user.name, id, secret))
+      app.gameStarts(GameAccess(app.api.host, port, user.name, id, secret), user, lobby)
   })(opened => lobby = Some(opened))
 
-  // The lobby websocket stays open during the game: the menu server kicks the players who leave it
-  override def leave(): Unit = if (!gameStarted) lobby.foreach(_.close())
+  // Once the game started, the lobby websocket is closed by MenuApp when coming back to the menus
+  override def leave(): Unit = {
+    left = true
+    if (!gameStarted) lobby.foreach(_.close())
+  }
 
   private def received(maybeGame: Option[MenuGameWithPlayers]): Unit = maybeGame match {
+    case _ if left || gameStarted => () // answers to requests made before
     case None =>
       app.notify("The game was closed by its creator", isError = true)
       app.show(new GamesScreen(app, user))
@@ -395,10 +439,7 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
 
     // Actions
     val bar = height - 70
-    if (ui.button("Leave game", Rect(left, bar, 150, 44), enabled)) {
-      busy = true
-      app.attempt(app.api.leaveGame(gameId))(_ => app.show(new GamesScreen(app, user)), _ => busy = false)
-    }
+    if (ui.button("Leave game", Rect(left, bar, 150, 44), enabled)) leaveGame()
     if (amICreator) {
       // Like the menu server, which picks the classes of the AIs: all the players' classes count
       val classes = configuration.playersInfo.values.flatMap(_.maybePlayerClass).toVector
@@ -413,10 +454,19 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
     } else ui.textIn("Waiting for the game creator to launch the game", Rect(0, bar, width - 40, 44), colour = Theme.muted,
       align = "right")
 
-    if (starting) {
+    for (since <- startingSince) {
       ui.fill(Rect(0, 0, width, height), Theme.background.withAlpha(0.8))
       ui.loading("Game is starting, please wait for setup to finish", width / 2 - 240, height / 2)
+      if (Timer.getTime() - since > 30) {
+        ui.textIn("The game server did not answer.", Rect(0, height / 2 + 40, width, 30), colour = Theme.muted)
+        if (ui.button("Leave game", Rect(width / 2 - 75, height / 2 + 80, 150, 44), !busy)) leaveGame()
+      }
     }
+  }
+
+  private def leaveGame(): Unit = {
+    busy = true
+    app.attempt(app.api.leaveGame(gameId))(_ => app.show(new GamesScreen(app, user)), _ => busy = false)
   }
 }
 

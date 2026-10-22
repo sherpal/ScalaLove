@@ -94,6 +94,7 @@ object Graphics extends js.Object {
   def getDimensions(): (width: Int, height: Int)                                      = js.native
   def newFont(size: Int): Font                                                        = js.native
   def setFont(font: Font): Unit                                                       = js.native
+  def getFont(): Font                                                                 = js.native
 }
 
 @js.native

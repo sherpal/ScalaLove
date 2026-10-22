@@ -10,6 +10,15 @@ import utils.misc.RGBColour
 /** Credentials to connect to a game server, received from the menu server. */
 final case class GameAccess(host: String, port: Int, userName: String, gameId: String, secret: String)
 
+/** How a game started from the menus was left. */
+enum GameExit {
+  /** The game ended (its server can be stopped). */
+  case Ended
+  /** The game server closed the connection before the end of the game. */
+  case ConnectionLost
+  case CannotConnect(error: String)
+}
+
 /** Plays the menus against the menu server like the frontend does, without a UI (for headless
   * runs): logs in, creates a game, chooses a class and gets ready, picks the boss, starts the game
   * and waits for the game server credentials (pushed on the lobby websocket).

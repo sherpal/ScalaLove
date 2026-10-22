@@ -18,6 +18,7 @@ import gamelogic.physics.Complex
 import models.bff.ingame.{Controls, InGameWSProtocol, UserInput}
 import models.bff.outofgame.PlayerClasses
 import models.bff.ingame.InGameWSProtocol.*
+import bffclient.ui.Ui
 
 /** Connects to a real Battle for Flatland game server, plays the start-of-game handshake like the
   * frontend, keeps a client-side copy of the game state from the server's updates, and renders it.
@@ -54,7 +55,7 @@ object Main {
               menu.info(s"ERROR: ${error.getMessage}")
               Event.quit(1)
           }
-        } else new MenuApp(api, access => startGame(access, headless)).install()
+        } else new MenuApp(api, (access, backToMenus) => startGame(access, headless, Some(backToMenus))).install()
       case None =>
         startGame(
           GameAccess(env("BFF_HOST", "localhost"), env("BFF_PORT", "22223").toInt, user,
@@ -64,15 +65,20 @@ object Main {
     }
   }
 
-  /** Connects to the game server and runs the game. */
-  def startGame(access: GameAccess, headless: Boolean): Unit = {
+  /** Connects to the game server and runs the game. When the game was joined through the menus,
+    * `backToMenus` goes back to them.
+    */
+  def startGame(access: GameAccess, headless: Boolean, backToMenus: Option[GameExit => Unit] = None): Unit = {
     val url = s"ws://${access.host}:${access.port}/ws/connect" +
       s"?userName=${access.userName}&secret=${access.secret}&gameId=${access.gameId}"
     println(s"Connecting to $url")
     val connection = WebSocketModule.connect(url)
     if (connection.socket == null) {
       println(s"Connection failed: ${connection.error}")
-      Event.quit(1)
+      backToMenus match {
+        case Some(back) => back(GameExit.CannotConnect(connection.error))
+        case None       => Event.quit(1)
+      }
     } else {
       println("Connected")
       val (controls, controlsInfo) = ControlsFile.load()
@@ -84,12 +90,25 @@ object Main {
         var renderer: Renderer = null
         val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => renderer.mouseWorld)
         renderer = new Renderer(client)
+        // Once the game is finished, the inputs go to the end of game overlay
+        val ui        = new Ui
+        val endOfGame = new EndOfGame(client, backToMenus.map(back => () => {
+          val exit = if (client.gameState.ended) GameExit.Ended else GameExit.ConnectionLost
+          client.leave()
+          back(exit)
+        }))
         Love.update = dt => client.update(dt)
-        Love.draw = () => renderer.draw()
-        Love.keypressed = (_, scancode, isRepeat) => if (!isRepeat) client.keyPressed(scancode)
-        Love.keyreleased = (_, scancode) => client.keyReleased(scancode)
+        Love.draw = () => {
+          renderer.draw()
+          if (client.finished) ui.frame(endOfGame.draw(ui))
+        }
+        Love.keypressed = (_, scancode, isRepeat) =>
+          if (client.finished) ui.keyPressed(scancode) else if (!isRepeat) client.keyPressed(scancode)
+        Love.keyreleased = (_, scancode) => if (!client.finished) client.keyReleased(scancode)
         Love.mousepressed = (x, y, button, _, _) =>
-          if (button == 1) client.clicked(renderer.toWorld(x, y))
+          if (client.finished) ui.mousePressed(x, y, button)
+          else if (button == 1) client.clicked(renderer.toWorld(x, y))
+        Love.mousereleased = (x, y, button, _, _) => if (client.finished) ui.mouseReleased(x, y, button)
       }
     }
   }
@@ -280,6 +299,12 @@ final class GameClient(
     Event.quit(0)
   }
 
+  /** The game ended, or the game server closed the connection. */
+  def finished: Boolean = gameState.ended || !ws.isOpen()
+
+  /** Closes the connection to the game server (e.g. to go back to the menus). */
+  def leave(): Unit = ws.close()
+
   def update(dt: Double): Unit = {
     elapsed += dt
 
@@ -298,7 +323,7 @@ final class GameClient(
       if (headless) println(status)
     }
 
-    if (gameBeganAt.isDefined && !gameState.ended) {
+    if (gameBeganAt.isDefined && !finished) {
       if (headless) { scriptedMovement(); scriptedCasts() }
       else keyboardMovement()
     }

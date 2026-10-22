@@ -158,6 +158,14 @@ frontend's Laminar pages (`MenuScreens.scala`):
 The pseudo, class, colour and boss are remembered in `menu.json` in LÖVE's save
 directory (the frontend keeps them in its local storage).
 
+When the game ends (or the game server closes the connection), an overlay shows
+the outcome, with "Back to menus" (Enter) and "Quit" (Escape). Going back stops
+the game's server through the menu server (like the frontend's "stop" button:
+BFF's game servers do not stop by themselves after their game, and all use port
+22222), leaves the game (the menu server never ends games by itself, so the
+players would otherwise stay "already playing" until it notices that they left
+the lobby websocket), and shows the games again.
+
 The UI toolkit (`ui/Ui.scala`) is a small immediate mode UI: every frame, the
 screens call widgets that draw themselves and return what happened, e.g.
 `if ui.button("Join", rect) then join()`. It has labels, wrapped text, panels,
@@ -184,7 +192,8 @@ The script runs the menu server (from a temporary directory, where it keeps its
 JSON files) and the game server launcher from their sbt classpaths, then stops
 everything. Note that BFF's game servers keep running after their game and
 always use port 22222, so a second game needs the first game server to be
-stopped (the script does it).
+stopped: the client does it when going back to the menus, and the script stops
+the leftovers.
 
 ## How it works
 

@@ -54,6 +54,13 @@ final class MenuApi(val host: String, val port: Int)(using ExecutionContext) {
   def startGame(gameId: String): Future[Boolean] =
     http.postApi[GameIdFormData, Boolean]("/api/bff/start-game", GameIdFormData(gameId))
 
+  /** Asks the game server launcher (through the menu server) to stop the game's server, like the
+    * frontend's "stop" button. BFF's game servers do not stop by themselves after their game, and all
+    * use the same port.
+    */
+  def stopGameServer(gameId: String): Future[Unit] =
+    http.post(s"/api/bff/game-playing/in-game/cancel-game?gameId=$gameId", "")
+
   /** The lobby websocket: tells when data changed, and pushes the game server credentials. With a
     * game id, it must stay open (also during the game): the menu server kicks the players who are
     * not connected.

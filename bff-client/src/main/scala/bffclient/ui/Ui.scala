@@ -89,13 +89,16 @@ final class Ui {
   def focused(input: TextInput): Boolean = focus.contains(input)
   def setFocus(input: TextInput): Unit   = focus = Some(input)
 
-  /** Draws (and handles) the widgets of one frame. */
+  /** Draws (and handles) the widgets of one frame. The font is restored afterwards, so that the UI
+    * can be drawn over something else (e.g. the game).
+    */
   def frame(widgets: => Unit): Unit = {
     val position = Mouse.getPosition()
     mouse = (position.x, position.y)
-    Graphics.setBackgroundColor(Theme.background.r, Theme.background.g, Theme.background.b)
     focusClaimed = false
+    val previousFont = Graphics.getFont()
     widgets
+    Graphics.setFont(previousFont)
     if (pressedThisFrame && !focusClaimed) focus = None
     if (releasedAt.isDefined) pressedAt = None
     releasedAt = None
