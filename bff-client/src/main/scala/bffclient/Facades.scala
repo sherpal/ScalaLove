@@ -37,7 +37,12 @@ object Os extends js.Object {
 object Love extends js.Object {
   var update: js.Function1[Double, Unit]                      = js.native
   var draw: js.Function0[Unit]                                = js.native
+  /** (key, scancode, isRepeat) */
   var keypressed: js.Function3[String, String, Boolean, Unit] = js.native
+  /** (key, scancode) */
+  var keyreleased: js.Function2[String, String, Unit]         = js.native
+  /** (x, y, button, isTouch, presses) */
+  var mousepressed: js.Function5[Double, Double, Int, Boolean, Int, Unit] = js.native
   /** Not null when the graphics module is enabled (i.e. not headless). */
   val graphics: js.Any = js.native
 }
@@ -57,9 +62,16 @@ object Graphics extends js.Object {
   def getDimensions(): (width: Int, height: Int)                                      = js.native
 }
 
+@js.native @JSGlobal("love.mouse")
+object Mouse extends js.Object {
+  def getPosition(): (x: Double, y: Double) = js.native
+  def isDown(button: Int): Boolean          = js.native
+}
+
 @js.native @JSGlobal("love.keyboard")
 object Keyboard extends js.Object {
-  def isDown(key: String): Boolean = js.native
+  def isDown(key: String): Boolean              = js.native
+  def isScancodeDown(scancode: String): Boolean = js.native
 }
 
 @js.native @JSGlobal("love.event")

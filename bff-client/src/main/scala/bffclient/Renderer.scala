@@ -1,6 +1,8 @@
 package bffclient
 
-import gamelogic.entities.{Body, Entity, LivingEntity}
+import gamelogic.abilities.Ability
+import gamelogic.entities.{Body, Entity, LivingEntity, WithName}
+import gamelogic.gameextras.GameMarkerInfo
 import gamelogic.entities.boss.BossEntity
 import gamelogic.entities.classes.PlayerClass
 import gamelogic.entities.staticstuff.Obstacle
@@ -15,11 +17,30 @@ import gamelogic.physics.shape.{Circle, Polygon}
 final class Renderer(client: GameClient) {
 
   private var cameraPosition = Complex.zero
+  private var screenWidth    = 800.0
+  private var screenHeight   = 600.0
+
+  /** Screen (pixels) to world coordinates, with the camera of the last frame. */
+  def toWorld(x: Double, y: Double): Complex =
+    cameraPosition + Complex(x - screenWidth / 2, screenHeight / 2 - y)
+
+  def mouseWorld: Complex = {
+    val mouse = Mouse.getPosition()
+    toWorld(mouse.x, mouse.y)
+  }
+
+  private val abilityNamesCache = scala.collection.mutable.Map.empty[String, Map[Ability.AbilityId, String]]
+
+  private def abilityNames(player: PlayerClass): Map[Ability.AbilityId, String] =
+    abilityNamesCache.getOrElseUpdate(player.cls.value,
+      player.cls.builder.abilitiesDoc.map(doc => doc.abilityId -> doc.name).toMap)
 
   def draw(): Unit = {
     val gameState = client.gameState
     val now       = client.serverNow
     val screen    = Graphics.getDimensions()
+    screenWidth = screen.width
+    screenHeight = screen.height
 
     // Camera: our player, or the boss once we are dead
     val me = client.myId.flatMap(gameState.players.get)
@@ -143,8 +164,75 @@ final class Renderer(client: GameClient) {
       castingBar(player)
     }
 
+    // Target
+    for (id <- client.currentTarget; case target: Body <- gameState.entities.get(id)) {
+      val (x, y) = toScreen(target.currentPosition(now))
+      if (client.lockInToTarget) Graphics.setColor(1, 0.3, 0) else Graphics.setColor(1, 0.85, 0)
+      Graphics.setLineWidth(2)
+      Graphics.circle("line", x, y, target.shape.radius + 6)
+      Graphics.setLineWidth(1)
+    }
+
+    // Game markers (put with the marker controls)
+    for ((marker, info) <- gameState.markersInfo) {
+      val position = info match {
+        case GameMarkerInfo.FixedGameMarker(_, gamePosition) => Some(gamePosition)
+        case GameMarkerInfo.GameMarkerOnEntity(_, entityId) =>
+          gameState.entities.get(entityId).collect { case b: Body => b.currentPosition(now) + Complex.i * (b.shape.radius + 24) }
+      }
+      position.foreach { p =>
+        val (x, y) = toScreen(p)
+        Graphics.setColor(0.1, 0.1, 0.6)
+        Graphics.circle("fill", x, y, 9)
+        Graphics.setColor(1, 1, 1)
+        Graphics.printf(marker.toString.take(1), x - 9, y - 7, 18, "center")
+      }
+    }
+
+    // Zone placement preview
+    for (_ <- client.choosingPosition) {
+      val (x, y) = toScreen(mouseWorld)
+      Graphics.setColor(1, 1, 1, 0.4)
+      Graphics.circle("fill", x, y, 45)
+    }
+
     hud(gameState, screen.width)
+    actionBar(gameState, now, screen.width, screen.height)
   }
+
+  private def actionBar(gameState: GameState, now: Long, width: Int, height: Int): Unit =
+    for (id <- client.myId; me <- gameState.players.get(id)) {
+      val names     = abilityNames(me)
+      val abilities = me.abilities.toArray
+      val slot      = 140.0
+      val left      = (width - slot * abilities.length) / 2
+      val top       = height - 60.0
+      for ((abilityId, i) <- abilities.zipWithIndex) {
+        val x = left + i * slot
+        val cooldown = me.relevantUsedAbilities.get(abilityId)
+          .map(used => used.time + used.cooldown - now).filter(_ > 0)
+        Graphics.setColor(1, 1, 1, 0.85)
+        Graphics.rectangle("fill", x + 2, top, slot - 4, 40)
+        cooldown.foreach { remaining =>
+          val total = me.relevantUsedAbilities(abilityId).cooldown.toDouble
+          Graphics.setColor(0.3, 0.3, 0.3, 0.6)
+          Graphics.rectangle("fill", x + 2, top, (slot - 4) * remaining / total, 40)
+        }
+        val colour = Ability.abilityColour(abilityId)
+        Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0)
+        Graphics.rectangle("fill", x + 2, top, slot - 4, 4)
+        Graphics.setColor(0, 0, 0)
+        Graphics.rectangle("line", x + 2, top, slot - 4, 40)
+        val keyLabel = client.controls.abilityKeys.lift(i).fold("-")(_.label)
+        Graphics.print(s"[$keyLabel]", x + 6, top + 6)
+        Graphics.printf(names.getOrElse(abilityId, s"#$abilityId"), x + 4, top + 22, slot - 8, "left")
+        cooldown.foreach(r => Graphics.print(s"${(r + 99) / 100 / 10.0}s", x + slot - 36, top + 6))
+      }
+      val resource = me.resourceAmount
+      Graphics.setColor(0, 0, 0)
+      Graphics.print(s"${resource.resourceType}: ${math.round(resource.amount)} / ${math.round(me.maxResourceAmount)}",
+        left + 2, top - 18)
+    }
 
   private def hud(gameState: GameState, width: Int): Unit = {
     Graphics.setColor(0, 0, 0)
@@ -155,11 +243,33 @@ final class Renderer(client: GameClient) {
     Graphics.print(boss, 10, 10)
     Graphics.print(me, 10, 28)
     Graphics.print(s"ping: ${client.roundTrip} ms   messages: ${client.messagesReceived}", 10, 46)
-    Graphics.print("WASD: move    Escape: quit", 10, 64)
+    val c = client.controls
+    Graphics.print(
+      s"Move: ${c.upKey.label} ${c.leftKey.label} ${c.downKey.label} ${c.rightKey.label}   " +
+        s"Next target: ${c.nextTargetKey.label} (or click)   " +
+        s"Face target: ${c.targetLockInToggleKey.label} (${if (client.lockInToTarget) "on" else "off"})   Escape: quit",
+      10, 64)
+    val target = client.currentTarget.flatMap(gameState.entities.get).collect { case l: LivingEntity => l }
+      .fold("Target: none") { t =>
+        val name = t match {
+          case named: WithName => named.name
+          case other           => other.getClass.getSimpleName
+        }
+        s"Target: $name (${math.round(t.life)} / ${math.round(t.maxLife)})"
+      }
+    Graphics.print(target, 10, 82)
     val message =
       if (gameState.ended) (if (gameState.playersWon) "Victory!" else "Defeat...")
       else if (!gameState.started) "Waiting for the game to start..."
       else ""
     if (message.nonEmpty) Graphics.printf(message, 0, 100, width, "center")
+    client.errorMessage.foreach { error =>
+      Graphics.setColor(0.8, 0, 0)
+      Graphics.printf(error, 0, 130, width, "center")
+    }
+    if (client.choosingPosition.isDefined) {
+      Graphics.setColor(0, 0, 0)
+      Graphics.printf("Click to place the zone (Escape to cancel)", 0, 150, width, "center")
+    }
   }
 }

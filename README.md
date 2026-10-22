@@ -41,8 +41,10 @@ To take screenshots from inside LÖVE (useful to check rendering from a script),
 optionally simulating held keys:
 
 ```bash
-love tools/screenshot game/target/lua 60,120 w:30-90
+love tools/screenshot game/target/lua 60,120 w:30-90,1@100
 ```
+
+(`w:30-90` holds `w` from frame 30 to 90, `1@100` presses `1` at frame 100.)
 
 ## Experiment: Battle for Flatland's game logic
 
@@ -110,7 +112,16 @@ client, and stops everything. With `tools/bff-online-test.sh --window`, the
 client opens a window and renders the game state with `love.graphics`
 (`bff-client/.../Renderer.scala`, modelled on the Indigo drawers: camera on the
 player, obstacles, boss, players in their colours, other bodies as outlines,
-life and casting bars, a small HUD), and you can move with WASD. Result: the handshake completes, the boss's AI
+life and casting bars, game markers, a small HUD), and you can play with the
+game's own `Controls` (its default bindings: WASD to move, digits for the
+abilities, Tab for the next target, CapsLock to face the target, R/F/V/T/G/B
+for markers, with Shift at the mouse position). LÖVE scancodes are converted to
+the DOM key codes used by `Controls` (`bff-client/.../LoveInput.scala`), then to
+`UserInput`s, handled like in the frontend: abilities as in
+`CastAbilitiesHandler` (same legality checks), next target as in
+`NextTargetHandler`, markers sent as `UpdateMarker`. A click selects a target
+or places a zone. The headless run also casts Direct Hit on the boss through
+the server. Result: the handshake completes, the boss's AI
 kills our idle triangle in ~13 s (as seen from the client-side game state), our
 movement is applied and echoed by the server, and the ping round trip is 2-4 ms.
 
