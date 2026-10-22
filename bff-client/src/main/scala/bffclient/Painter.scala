@@ -1,0 +1,115 @@
+package bffclient
+
+import bffclient.ui.Colour as Paint
+import gamelogic.entities.{Body, Entity, LivingEntity, WithPosition}
+import gamelogic.entities.WithPosition.Angle
+import gamelogic.gamestate.GameState
+import gamelogic.physics.Complex
+import gamelogic.physics.shape.{Circle, Polygon}
+
+/** Drawing in world coordinates, for one frame: the camera at `cameraPosition` (y axis pointing up),
+  * entities where they are shown (smoothed, except our predicted player).
+  */
+final class Painter(val gameState: GameState, val now: Long, cameraPosition: Complex, screenWidth: Double,
+    screenHeight: Double, smoothing: Smoothing) {
+
+  def position(entity: WithPosition): Complex = smoothing.position(entity, now)
+  def rotation(body: Body): Angle               = smoothing.rotation(body)
+
+  def toScreen(z: Complex): (Double, Double) = {
+    val d = z - cameraPosition
+    (screenWidth / 2.0 + d.re, screenHeight / 2.0 - d.im)
+  }
+
+  def polygonCoords(points: Iterable[Complex]): Seq[Double] =
+    points.toSeq.flatMap { p => val (x, y) = toScreen(p); Seq(x, y) }
+
+  def setColour(colour: Paint): Unit = Graphics.setColor(colour.r, colour.g, colour.b, colour.a)
+
+  /** Draws the body's shape with the current colour, "fill" or "line". */
+  def drawShape(body: Body, mode: String): Unit = {
+    val pos = position(body)
+    body.shape match {
+      case circle: Circle =>
+        val (x, y) = toScreen(pos)
+        Graphics.circle(mode, x, y, circle.radius)
+      case polygon: Polygon if mode == "fill" =>
+        // Fill triangle by triangle, as obstacles can be concave
+        for (t <- polygon.triangulation) {
+          val corners = Seq(Complex(t.x0, t.y0), Complex(t.x1, t.y1), Complex(t.x2, t.y2))
+            .map(_.rotate(rotation(body)) + pos)
+          Graphics.polygon("fill", polygonCoords(corners)*)
+        }
+      case polygon: Polygon =>
+        Graphics.polygon("line", polygonCoords(polygon.translateAndRotationVertices(pos, rotation(body)))*)
+      case _ =>
+        ()
+    }
+  }
+
+  /** The body's shape, filled and/or outlined (stroke: width and colour). */
+  def shape(body: Body, fill: Option[Paint], stroke: Option[(Double, Paint)] = None): Unit = {
+    fill.foreach { colour => setColour(colour); drawShape(body, "fill") }
+    stroke.foreach { (width, colour) =>
+      setColour(colour); Graphics.setLineWidth(width); drawShape(body, "line"); Graphics.setLineWidth(1)
+    }
+  }
+
+  def circle(centre: Complex, radius: Double, fill: Option[Paint], stroke: Option[(Double, Paint)] = None): Unit = {
+    val (x, y) = toScreen(centre)
+    fill.foreach { colour => setColour(colour); Graphics.circle("fill", x, y, radius) }
+    stroke.foreach { (width, colour) =>
+      setColour(colour); Graphics.setLineWidth(width); Graphics.circle("line", x, y, radius); Graphics.setLineWidth(1)
+    }
+  }
+
+  /** A convex polygon. */
+  def polygon(points: Seq[Complex], fill: Option[Paint], stroke: Option[(Double, Paint)] = None): Unit = {
+    val coords = polygonCoords(points)
+    fill.foreach { colour => setColour(colour); Graphics.polygon("fill", coords*) }
+    stroke.foreach { (width, colour) =>
+      setColour(colour); Graphics.setLineWidth(width); Graphics.polygon("line", coords*); Graphics.setLineWidth(1)
+    }
+  }
+
+  def line(from: Complex, to: Complex, width: Double, colour: Paint): Unit = {
+    val (x0, y0) = toScreen(from)
+    val (x1, y1) = toScreen(to)
+    setColour(colour)
+    Graphics.setLineWidth(width)
+    Graphics.line(x0, y0, x1, y1)
+    Graphics.setLineWidth(1)
+  }
+
+  /** A line from the centre of the body in the direction it faces. */
+  def nose(body: Body, colour: (Double, Double, Double)): Unit = {
+    val pos = position(body)
+    line(pos, pos + Complex.polar(body.shape.radius, rotation(body)), 2, Paint(colour._1, colour._2, colour._3))
+  }
+
+  def lifeBar(entity: LivingEntity & Body): Unit = {
+    val radius = entity.shape.radius
+    val (x, y) = toScreen(position(entity) + Complex.i * (radius + 10))
+    val ratio  = math.max(0.0, math.min(1.0, entity.life / entity.maxLife))
+    Graphics.setColor(1, 1, 1)
+    Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius, 5)
+    if (ratio > 0.5) Graphics.setColor(0, 0.8, 0)
+    else if (ratio > 0.2) Graphics.setColor(1, 0.6, 0)
+    else Graphics.setColor(0.9, 0, 0)
+    Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius * ratio, 5)
+    Graphics.setColor(0, 0, 0)
+    Graphics.rectangle("line", x - radius, y - 2.5, 2 * radius, 5)
+  }
+
+  def castingBar(entity: Entity & Body): Unit =
+    gameState.castingEntityInfo.get(entity.id).filter(_.isCasting(now, 0L)).foreach { info =>
+      val radius   = entity.shape.radius
+      val (x, y)   = toScreen(position(entity) - Complex.i * (radius + 10))
+      val progress = (info.castingTime - info.remainingCastingTime(now, 0L)).toDouble / info.castingTime
+      val colour   = info.ability.abilityColour
+      Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0)
+      Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius * progress, 5)
+      Graphics.setColor(0, 0, 0)
+      Graphics.rectangle("line", x - radius, y - 2.5, 2 * radius, 5)
+    }
+}

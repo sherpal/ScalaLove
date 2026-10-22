@@ -46,6 +46,11 @@ object Sprites {
   /** The sword of the triangle's direct hit. */
   lazy val sword: Option[Sprite] = load("abilities/sword.png")
 
+  /** Boss 102's damage zones (12 frames) and the zone around the players carrying one (3 x 5 frames). */
+  lazy val damageZone: Option[Sprite]       = load("boss/dawn-of-time/boss102/damage-zone-animation.png", columns = 12)
+  lazy val livingDamageZone: Option[Sprite] =
+    load("boss/dawn-of-time/boss102/living-damage-zone-animation.png", rows = 3, columns = 5)
+
   /** The icons of the abilities, like the frontend's `Asset.abilityAssetMap`. */
   lazy val abilityIcons: Map[Ability.AbilityId, Sprite] = Seq(
     Ability.hexagonHexagonHotId      -> "hexagon-hot",

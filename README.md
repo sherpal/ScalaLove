@@ -170,6 +170,15 @@ zones are drawn in their owner's colour, and pentagon bullets too. The action
 bar shows the frontend's ability icons, darkened from the top during their
 cooldown and pushed down for a moment when used.
 
+What is specific to each boss is drawn like the frontend's
+`bossspecificdrawers` (`BossVisuals.scala`): Boss 102's hounds, damage zones
+and living damage zones (animated); Boss 104's big guys, death marks, debuff
+circles and the finisher's triangle; Boss 105's Shade, the twins' auras and
+bond, its ring, the Skewer's beam, the volatile charges, the reformation points,
+Siphon and Reunion; Sir of Vice's Sacred Ground, Cleansing Nova and Holy Wrath.
+The visuals are chosen by the types of the entities and buffs rather than by
+boss name, so a boss without any (Boss 101, Boss 110) simply has none.
+
 The images are the frontend's: `bffClient/luaLink` copies them from the Battle
 for Flatland checkout (`BFF_DIR`, by default `../BattleForFlatland`) next to
 `main.lua`, they are not copied in this repository. Without them, the client

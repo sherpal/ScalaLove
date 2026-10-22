@@ -16,8 +16,8 @@ import gamelogic.physics.Complex
 import gamelogic.physics.shape.{Circle, Polygon}
 
 /** Draws the client-side game state with love.graphics, like the Indigo frontend's drawers:
-  * camera centred on our player (y axis pointing up), obstacles, boss, players, and every other
-  * body as an outline.
+  * camera centred on our player (y axis pointing up), obstacles, what is specific to the boss
+  * (`BossVisuals`), zones, boss, players, and every other body as an outline.
   */
 final class Renderer(client: GameClient) {
 
@@ -50,76 +50,11 @@ final class Renderer(client: GameClient) {
     // Camera: our player, or the boss once we are dead
     val me = client.myId.flatMap(gameState.players.get)
     cameraPosition = me.map(_.currentPosition(now))
-      .orElse(gameState.bosses.values.headOption.map(position))
+      .orElse(gameState.bosses.values.headOption.map(client.smoothing.position(_, now)))
       .getOrElse(cameraPosition)
 
-    // Where to draw the entities: smoothed, except our (predicted) player
-    def position(entity: WithPosition): Complex = client.smoothing.position(entity, now)
-    def rotation(body: Body): Angle               = client.smoothing.rotation(body)
-
-    def toScreen(z: Complex): (Double, Double) = {
-      val d = z - cameraPosition
-      (screen.width / 2.0 + d.re, screen.height / 2.0 - d.im)
-    }
-
-    def polygonCoords(points: Iterable[Complex]): Seq[Double] =
-      points.toSeq.flatMap { p => val (x, y) = toScreen(p); Seq(x, y) }
-
-    def drawShape(body: Body, mode: String): Unit = {
-      val pos = position(body)
-      body.shape match {
-        case circle: Circle =>
-          val (x, y) = toScreen(pos)
-          Graphics.circle(mode, x, y, circle.radius)
-        case polygon: Polygon if mode == "fill" =>
-          // Fill triangle by triangle, as obstacles can be concave
-          for (t <- polygon.triangulation) {
-            val corners = Seq(Complex(t.x0, t.y0), Complex(t.x1, t.y1), Complex(t.x2, t.y2))
-              .map(_.rotate(rotation(body)) + pos)
-            Graphics.polygon("fill", polygonCoords(corners)*)
-          }
-        case polygon: Polygon =>
-          Graphics.polygon("line", polygonCoords(polygon.translateAndRotationVertices(pos, rotation(body)))*)
-        case _ =>
-          ()
-      }
-    }
-
-    def nose(body: Body, colour: (Double, Double, Double)): Unit = {
-      val pos     = position(body)
-      val (x0, y0) = toScreen(pos)
-      val (x1, y1) = toScreen(pos + Complex.polar(body.shape.radius, rotation(body)))
-      Graphics.setColor(colour._1, colour._2, colour._3)
-      Graphics.setLineWidth(2)
-      Graphics.line(x0, y0, x1, y1)
-      Graphics.setLineWidth(1)
-    }
-
-    def lifeBar(entity: LivingEntity & Body): Unit = {
-      val radius = entity.shape.radius
-      val (x, y) = toScreen(position(entity) + Complex.i * (radius + 10))
-      val ratio  = math.max(0.0, math.min(1.0, entity.life / entity.maxLife))
-      Graphics.setColor(1, 1, 1)
-      Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius, 5)
-      if (ratio > 0.5) Graphics.setColor(0, 0.8, 0)
-      else if (ratio > 0.2) Graphics.setColor(1, 0.6, 0)
-      else Graphics.setColor(0.9, 0, 0)
-      Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius * ratio, 5)
-      Graphics.setColor(0, 0, 0)
-      Graphics.rectangle("line", x - radius, y - 2.5, 2 * radius, 5)
-    }
-
-    def castingBar(entity: Entity & Body): Unit =
-      gameState.castingEntityInfo.get(entity.id).filter(_.isCasting(now, 0L)).foreach { info =>
-        val radius   = entity.shape.radius
-        val (x, y)   = toScreen(position(entity) - Complex.i * (radius + 10))
-        val progress = (info.castingTime - info.remainingCastingTime(now, 0L)).toDouble / info.castingTime
-        val colour   = info.ability.abilityColour
-        Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0)
-        Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius * progress, 5)
-        Graphics.setColor(0, 0, 0)
-        Graphics.rectangle("line", x - radius, y - 2.5, 2 * radius, 5)
-      }
+    val painter = new Painter(gameState, now, cameraPosition, screen.width, screen.height, client.smoothing)
+    import painter.*
 
     Graphics.setBackgroundColor(200 / 255.0, 200 / 255.0, 200 / 255.0)
 
@@ -129,6 +64,9 @@ final class Renderer(client: GameClient) {
     Graphics.circle("fill", ox, oy, 2)
 
     val entities = gameState.entities.values.toList.sortBy(_.id.toString)
+
+    // What is specific to the boss, on the ground (zones, auras, beams, ...), under everything
+    BossVisuals.ground(painter)
 
     // Obstacles
     for (case obstacle: Obstacle <- entities) {
@@ -145,6 +83,7 @@ final class Renderer(client: GameClient) {
     // Other bodies (zones, bullets, adds, ...)
     for (case body: Body <- entities) body match {
       case _: Obstacle | _: BossEntity | _: PlayerClass => ()
+      case drawn if BossVisuals.draws(drawn)           => ()
       case zone: HexagonZone =>
         ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
         ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line"); Graphics.setLineWidth(1)
@@ -162,6 +101,9 @@ final class Renderer(client: GameClient) {
           case _                    => ()
         }
     }
+
+    // The adds of the bosses
+    BossVisuals.adds(painter)
 
     // Bosses
     for (boss <- gameState.bosses.values) {

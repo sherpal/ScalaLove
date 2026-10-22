@@ -96,7 +96,10 @@ val bffImages = Seq(
   "square-enrage", "square-cleave", "triangle-energy-kick", "triangle-direct-hit",
   "triangle-upgrade-direct-hit", "triangle-stun", "triangle-cut", "pentagon-bullet",
   "create-pentagon-zone", "pentagon-dispel"
-).map(icon => s"abilities/$icon.png")
+).map(icon => s"abilities/$icon.png") ++ Seq( // boss specific
+  "boss/dawn-of-time/boss102/damage-zone-animation.png",
+  "boss/dawn-of-time/boss102/living-damage-zone-animation.png"
+)
 
 // Experiment: a LÖVE client for Battle for Flatland (menus and game)
 lazy val bffClient = luaProject(project.in(file("bff-client")))
