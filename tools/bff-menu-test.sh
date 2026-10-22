@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Plays a game through Battle for Flatland's menu server, like a player with the browser frontend:
 # the LÖVE client logs in, creates a game, gets ready, starts it, receives the game server
-# credentials on the lobby websocket, then plays. Headless by default, in a window with --window.
+# credentials on the lobby websocket, then plays. Headless by default (with scripted menus).
+#   --window                    plays in a window, with the menus' UI
+#   --screenshot FRAMES EVENTS  runs the window through tools/screenshot (see there), e.g.
+#                               --screenshot 30,90 "text@10:alice,return@20"
 #
 # Runs the menu server (in a temporary working directory, where it keeps its JSON "database"),
 # the game server launcher, and stops them (and the game server) at the end.
@@ -48,6 +51,8 @@ curl -s -o /dev/null http://127.0.0.1:9000/api/users/me || { tail "$WORK/menu-se
 export BFF_MENU_URL=http://127.0.0.1:9000 BFF_USER="${BFF_USER:-alice}" BFF_CLASS="${BFF_CLASS:-Triangle}"
 if [[ "${1:-}" == "--window" ]]; then
   love "$HERE/bff-client/target/lua"
+elif [[ "${1:-}" == "--screenshot" ]]; then
+  timeout 180 love "$HERE/tools/screenshot" "$HERE/bff-client/target/lua" "$2" "${3:-}"
 else
   BFF_HEADLESS=1 timeout 120 love "$HERE/bff-client/target/lua"
 fi

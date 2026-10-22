@@ -1754,6 +1754,20 @@ function scalalove.bytesToString(a)
   return table.concat(parts)
 end
 
+-- Lua sequence (1-based, as returned by Lua APIs) -> js.Array, and back
+function scalalove.fromLuaSequence(t)
+  local n = #t
+  local a = { length = n }
+  for i = 1, n do a[i - 1] = t[i] end
+  return setmetatable(a, JSArray)
+end
+
+function scalalove.toLuaSequence(a)
+  local t = {}
+  for i = 0, a.length - 1 do t[i + 1] = a[i] end
+  return t
+end
+
 function R.zor(a, b) return a or b end
 function R.zand(a, b) return a and b end
 function R.void(_) return nil end

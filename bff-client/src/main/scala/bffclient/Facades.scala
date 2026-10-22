@@ -47,7 +47,14 @@ trait WebSocket extends js.Object {
 object ScalaLove extends js.Object {
   def stringToBytes(s: String): Array[Byte]     = js.native
   def bytesToString(bytes: Array[Byte]): String = js.native
+  /** A Lua sequence (1-based table, as returned by Lua functions) as a JS array. */
+  def fromLuaSequence[A](sequence: LuaSequence[A]): js.Array[A] = js.native
+  def toLuaSequence[A](array: js.Array[A]): LuaSequence[A]      = js.native
 }
+
+/** A Lua table with elements at indices 1 to n (convert it with `ScalaLove.fromLuaSequence`). */
+@js.native
+trait LuaSequence[A] extends js.Object
 
 @js.native @JSGlobal("os")
 object Os extends js.Object {
@@ -64,6 +71,10 @@ object Love extends js.Object {
   var keyreleased: js.Function2[String, String, Unit]         = js.native
   /** (x, y, button, isTouch, presses) */
   var mousepressed: js.Function5[Double, Double, Int, Boolean, Int, Unit] = js.native
+  /** (x, y, button, isTouch, presses) */
+  var mousereleased: js.Function5[Double, Double, Int, Boolean, Int, Unit] = js.native
+  /** Text typed on the keyboard (UTF-8), see `love.keyboard.setTextInput`. */
+  var textinput: js.Function1[String, Unit]                   = js.native
   /** Not null when the graphics module is enabled (i.e. not headless). */
   val graphics: js.Any = js.native
 }
@@ -81,6 +92,16 @@ object Graphics extends js.Object {
   def print(text: String, x: Double, y: Double): Unit                                 = js.native
   def printf(text: String, x: Double, y: Double, limit: Double, align: String): Unit  = js.native
   def getDimensions(): (width: Int, height: Int)                                      = js.native
+  def newFont(size: Int): Font                                                        = js.native
+  def setFont(font: Font): Unit                                                       = js.native
+}
+
+@js.native
+trait Font extends js.Object {
+  def getWidth(text: String): Double = js.native
+  def getHeight(): Double            = js.native
+  /** The lines of `text` wrapped at `limit` pixels. */
+  def getWrap(text: String, limit: Double): (width: Double, lines: LuaSequence[String]) = js.native
 }
 
 @js.native @JSGlobal("love.mouse")
@@ -93,6 +114,13 @@ object Mouse extends js.Object {
 object Keyboard extends js.Object {
   def isDown(key: String): Boolean              = js.native
   def isScancodeDown(scancode: String): Boolean = js.native
+  def setKeyRepeat(enable: Boolean): Unit       = js.native
+}
+
+@js.native @JSGlobal("love.timer")
+object Timer extends js.Object {
+  /** Seconds since some unspecified time. */
+  def getTime(): Double = js.native
 }
 
 @js.native @JSGlobal("love.event")

@@ -6,9 +6,13 @@ import scala.scalajs.js
 
 import io.circe.{Decoder, Encoder}
 import io.circe.parser.decode
+import errors.ErrorADT
 import menus.data.APIResponse
 
 final class HttpError(message: String) extends Exception(message)
+
+/** The menu server answered with an error (e.g. "you are not the game creator"). */
+final class ApiError(val error: ErrorADT) extends Exception(error.repr)
 
 /** JSON over HTTP, with the session cookie of the menu server.
   *
@@ -60,11 +64,11 @@ final class HttpClient(baseUrl: String)(using ExecutionContext) {
   def post[A: Encoder](path: String, data: A): Future[Unit] =
     request("POST", path, Encoder[A].apply(data).noSpaces).map(_ => ())
 
-  /** POST returning an `APIResponse[B]`, the menu server's usual answer. */
+  /** POST returning an `APIResponse[B]`, the menu server's usual answer (failed with an [[ApiError]]). */
   def postApi[A: Encoder, B](path: String, data: A)(using Encoder[B], Decoder[B]): Future[B] =
     request("POST", path, Encoder[A].apply(data).noSpaces)
       .flatMap(decoded[APIResponse[B]])
       .flatMap(response =>
-        Future.fromTry(response.toEither.left.map(error => HttpError(s"$path: $error")).toTry)
+        Future.fromTry(response.toEither.left.map(ApiError(_)).toTry)
       )
 }

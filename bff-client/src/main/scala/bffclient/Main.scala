@@ -30,8 +30,9 @@ object Main {
 
   private def env(name: String, default: String): String = Option(Os.getenv(name)).getOrElse(default)
 
-  /** With BFF_MENU_URL (e.g. http://127.0.0.1:9000), goes through the menu server first. Otherwise,
-    * connects directly to a game server (BFF_HOST, BFF_PORT, BFF_SECRET, BFF_GAME_ID).
+  /** With BFF_MENU_URL (e.g. http://127.0.0.1:9000), goes through the menu server first: with the
+    * menus' UI, or scripted when headless (BFF_USER, BFF_CLASS, BFF_BOSS). Otherwise, connects
+    * directly to a game server (BFF_HOST, BFF_PORT, BFF_SECRET, BFF_GAME_ID).
     */
   def main(args: Array[String]): Unit = {
     val user     = env("BFF_USER", "alice")
@@ -43,15 +44,17 @@ object Main {
           case Array(h)    => (h, 80)
           case _           => sys.error(s"Invalid BFF_MENU_URL $menuUrl")
         }
-        val playerClass = PlayerClasses.playerClassByName(env("BFF_CLASS", "Triangle")).getOrElse(PlayerClasses.Triangle)
-        val menu        = new MenuSession(host, port, user, playerClass, env("BFF_BOSS", "Boss 101"))
-        if (!headless) Love.draw = () => MenuScreen.draw(menu.log)
-        menu.run().onComplete {
-          case Success(access) => startGame(access, headless)
-          case Failure(error) =>
-            menu.info(s"ERROR: ${error.getMessage}")
-            if (headless) Event.quit(1)
-        }
+        val api = new MenuApi(host, port)
+        if (headless) {
+          val playerClass = PlayerClasses.playerClassByName(env("BFF_CLASS", "Triangle")).getOrElse(PlayerClasses.Triangle)
+          val menu        = new MenuSession(api, user, playerClass, env("BFF_BOSS", "Boss 101"))
+          menu.run().onComplete {
+            case Success(access) => startGame(access, headless)
+            case Failure(error) =>
+              menu.info(s"ERROR: ${error.getMessage}")
+              Event.quit(1)
+          }
+        } else new MenuApp(api, access => startGame(access, headless)).install()
       case None =>
         startGame(
           GameAccess(env("BFF_HOST", "localhost"), env("BFF_PORT", "22223").toInt, user,
@@ -89,16 +92,6 @@ object Main {
           if (button == 1) client.clicked(renderer.toWorld(x, y))
       }
     }
-  }
-}
-
-/** While in the menus: what the menu session did so far. */
-object MenuScreen {
-  def draw(log: collection.Seq[String]): Unit = {
-    Graphics.setBackgroundColor(0.15, 0.15, 0.2)
-    Graphics.setColor(1, 1, 1)
-    Graphics.print("Battle for Flatland - menus (via the menu server)", 20, 20)
-    for ((line, i) <- log.takeRight(30).zipWithIndex) Graphics.print(line, 20, 50 + 18 * i)
   }
 }
 

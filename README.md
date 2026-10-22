@@ -39,13 +39,16 @@ multiple return values, JSON with circe, regular expressions, `String.format`,
 futures and timers, ...).
 
 To take screenshots from inside LÖVE (useful to check rendering from a script),
-optionally simulating held keys:
+optionally simulating input:
 
 ```bash
 love tools/screenshot game/target/lua 60,120 w:30-90,1@100
 ```
 
-(`w:30-90` holds `w` from frame 30 to 90, `1@100` presses `1` at frame 100.)
+(`w:30-90` holds `w` from frame 30 to 90, `1@100` presses `1` at frame 100,
+`click@50:400:300` clicks at (400, 300) at frame 50, `text@20:hello` types
+`hello` at frame 20. `SCREENSHOT_IDENTITY` sets the save directory, to run
+several instances at once.)
 
 ## Experiment: Battle for Flatland's game logic
 
@@ -137,19 +140,44 @@ movement is applied and echoed by the server, and the ping round trip is 2-4 ms.
 ### Through the menu server
 
 With `BFF_MENU_URL`, the client first goes through BFF's menu server, over HTTP
-and the lobby websocket, like the browser frontend: it logs in (session
-cookie), creates a game, picks its class and gets ready, chooses the boss,
-starts the game, receives the game server credentials on the lobby websocket,
-then connects to the game server and plays (`bff-client/.../MenuSession.scala`,
-using the game's own request/response types and circe codecs).
+and the lobby websocket, like the browser frontend, with the game's own
+request/response types and circe codecs (`MenuApi.scala`).
+
+In a window, the menus have a UI drawn with love.graphics, replacing the
+frontend's Laminar pages (`MenuScreens.scala`):
+
+* **login**: choose a pseudo (validated with BFF's `LoginUser.validator`);
+* **games**: the games that did not start, refreshed live from the lobby
+  websocket; create one, or join one (or join back the one you are in);
+* **game lobby**: the players with their class, colour and readiness; choose
+  your class and colour, get ready; the creator chooses the boss (with its
+  documentation from `BossMetadata`), kicks players, adds AIs and launches the
+  game once `GameConfiguration.validate` has nothing to say. The game server
+  credentials then arrive on the lobby websocket, and the game starts.
+
+The pseudo, class, colour and boss are remembered in `menu.json` in LÖVE's save
+directory (the frontend keeps them in its local storage).
+
+The UI toolkit (`ui/Ui.scala`) is a small immediate mode UI: every frame, the
+screens call widgets that draw themselves and return what happened, e.g.
+`if ui.button("Join", rect) then join()`. It has labels, wrapped text, panels,
+buttons, text fields (UTF-8 aware, with keyboard focus), check boxes,
+`< value >` selectors, segmented buttons and colour swatches. Immediate mode fits
+LÖVE's draw loop and needs little code; there is no layout engine, screens
+position widgets with `Rect`s.
+
+Headless, the menus are scripted (`MenuSession.scala`): log in, create a game,
+pick `BFF_CLASS` and get ready, choose `BFF_BOSS`, start, play.
 
 HTTP requests run on a LÖVE thread (`http.lua`, `http_worker.lua`, LuaSocket),
-so the game loop never blocks. `HttpClient` returns `Future`s, and the whole menu
+so the game loop never blocks. `HttpClient` returns `Future`s, so the scripted
 flow is a for-comprehension.
 
 ```bash
-tools/bff-menu-test.sh            # headless
-tools/bff-menu-test.sh --window
+tools/bff-menu-test.sh            # headless, scripted menus
+tools/bff-menu-test.sh --window   # with the menus' UI
+# Through tools/screenshot: log in as alice and create a game
+tools/bff-menu-test.sh --screenshot 50,100 "text@10:alice,return@20,click@70:445:125"
 ```
 
 The script runs the menu server (from a temporary directory, where it keeps its
@@ -227,6 +255,9 @@ LÖVE is called through ordinary Scala.js facades (see `game/src/main/scala/love
   its methods are called with a dot, `love.graphics.rectangle(...)`.
 * Other JS-typed values (e.g. a `Font` returned by `newFont`) are objects: their
   methods are called with a colon, `font:getWidth(...)`.
+* Lua sequences (1-based tables, e.g. the lines returned by `Font:getWrap`) are
+  not `js.Array`s (0-based, with a `length`): `scalalove.fromLuaSequence` and
+  `toLuaSequence` convert them.
 * Scala functions assigned to `js.Function` fields become plain Lua functions,
   so `Love.update = dt => ...` is `love.update = function(dt) ... end`.
 * Lua functions returning several values are declared with a Scala tuple
