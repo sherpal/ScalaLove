@@ -97,7 +97,9 @@ final class Renderer(client: GameClient) {
         Graphics.setColor(0.2, 0.2, 0.2)
         drawShape(other, "line")
         other match {
-          case living: LivingEntity => lifeBar(living.asInstanceOf[LivingEntity & Body])
+          case living: LivingEntity =>
+            lifeBar(living.asInstanceOf[LivingEntity & Body])
+            buffIcons(living.asInstanceOf[LivingEntity & Body])
           case _                    => ()
         }
     }

@@ -189,7 +189,7 @@ object BossVisuals {
   def adds(p: Painter): Unit = {
     import p.*
 
-    def withBars(add: LivingEntity & Body): Unit = { lifeBar(add); castingBar(add) }
+    def withBars(add: LivingEntity & Body): Unit = { lifeBar(add); castingBar(add); buffIcons(add) }
 
     // Boss 102's hounds and Boss 104's big guys
     for (hound <- gameState.allTEntities[BossHound].values) {
