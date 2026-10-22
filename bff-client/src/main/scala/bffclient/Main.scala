@@ -282,6 +282,9 @@ final class GameClient(
   /** Smoothed positions of the entities moved by the server, for drawing. */
   val smoothing = new Smoothing
 
+  /** Visual effects of the actions (damage numbers, ...). */
+  val effects = new Effects
+
   // Headless: the largest jumps and turns of the boss between two frames, actual and smoothed
   private var previousBoss: Option[(Complex, Complex, Double, Double)] = None
   private var largestBossJumps                                         = (0.0, 0.0)
@@ -515,6 +518,7 @@ final class GameClient(
     case AddAndRemoveActions(toAdd, oldestTimeToRemove, idsToRemove) =>
       actionsReceived += toAdd.length
       gatherer = gatherer.slaveAddAndRemoveActions(toAdd, oldestTimeToRemove, idsToRemove)
+      effects.received(toAdd, gatherer.currentGameState, myId)
     case RemoveActions(oldestTime, ids) =>
       gatherer = gatherer.slaveAddAndRemoveActions(Vector.empty, oldestTime, ids)
     case Pong(originalSendingTime, midwayDistantTime, _) =>

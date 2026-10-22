@@ -92,10 +92,35 @@ object Graphics extends js.Object {
   def print(text: String, x: Double, y: Double): Unit                                 = js.native
   def printf(text: String, x: Double, y: Double, limit: Double, align: String): Unit  = js.native
   def getDimensions(): (width: Int, height: Int)                                      = js.native
+  /** Draws the image at (x, y), turned by `r` (clockwise), scaled, with origin (ox, oy) in the image. */
+  def draw(image: Image, x: Double, y: Double, r: Double, sx: Double, sy: Double, ox: Double, oy: Double): Unit =
+    js.native
+  /** Draws the part `quad` of the image. */
+  def draw(image: Image, quad: Quad, x: Double, y: Double, r: Double, sx: Double, sy: Double, ox: Double,
+      oy: Double): Unit = js.native
+  def newQuad(x: Double, y: Double, width: Double, height: Double, imageWidth: Double, imageHeight: Double): Quad =
+    js.native
   def newFont(size: Int): Font                                                        = js.native
   def setFont(font: Font): Unit                                                       = js.native
   def getFont(): Font                                                                 = js.native
 }
+
+/** Images, from src/main/lua/images.lua. */
+@js.native @JSImport("images", JSImport.Namespace)
+object Images extends js.Object {
+  /** The image at this path of the game directory, or null if there is none. */
+  def load(path: String): Image = js.native
+}
+
+@js.native
+trait Image extends js.Object {
+  def getWidth(): Double  = js.native
+  def getHeight(): Double = js.native
+}
+
+/** A part of an image. */
+@js.native
+trait Quad extends js.Object
 
 @js.native
 trait Font extends js.Object {

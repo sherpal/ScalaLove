@@ -159,6 +159,20 @@ using the actual positions and rotations. With 300 ms of simulated latency, the
 boss's largest jump between two frames goes from 53 units to 4, and its largest
 turn from 3.14 rad (a half turn) to 0.16 (headless runs report both).
 
+The players are drawn with the frontend's class sprites (white shapes tinted
+with the player's colour), with the frontend's sparks in their hands while
+they cast. Like the frontend's `EffectsManager`, the abilities have effects
+(`Effects.scala`): damage numbers (red for the damage we take, white for the
+damage we deal), green numbers for our heals, the square's cleave and the swing
+of the triangle's direct hit. Each action has its effects once, even when the
+server sends it again. The numbers follow their entity. Hexagon and pentagon
+zones are drawn in their owner's colour, and pentagon bullets too.
+
+The images are the frontend's: `bffClient/luaLink` copies them from the Battle
+for Flatland checkout (`BFF_DIR`, by default `../BattleForFlatland`) next to
+`main.lua`, they are not copied in this repository. Without them, the client
+draws shapes instead.
+
 To try it with latency, `BFF_LAG_MS` simulates a round trip (half on each way),
 e.g. `BFF_LAG_MS=300 tools/bff-menu-test.sh --window`. Headless, the status
 lines show our predicted position next to the server's.

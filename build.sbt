@@ -80,9 +80,32 @@ lazy val bffSimJVM = project.in(file("bff-sim/jvm"))
     run / fork := true
   )
 
-// Experiment: a headless LÖVE client connecting to a real Battle for Flatland game server
+lazy val bffDir = settingKey[File]("The Battle for Flatland checkout (BFF_DIR), for the frontend's images")
+
+// The frontend's images used by the client, in frontend/public/assets/in-game/gui
+val bffImages = Seq(
+  "players/triangle.png",
+  "players/square.png",
+  "players/pentagon.png",
+  "players/hexagon.png",
+  "abilities/player-casting-ability-animation.png",
+  "abilities/cleave-animation.png",
+  "abilities/sword.png"
+)
+
+// Experiment: a LÖVE client for Battle for Flatland (menus and game)
 lazy val bffClient = luaProject(project.in(file("bff-client")))
   .settings(
     scalaVersion := "3.9.0",
-    libraryDependencies += "local.bff" %%% "shared" % bffVersion
+    libraryDependencies += "local.bff" %%% "shared" % bffVersion,
+    bffDir := sys.env.get("BFF_DIR").map(file)
+      .getOrElse((ThisBuild / baseDirectory).value.getParentFile / "BattleForFlatland"),
+    // The images are copied from the BFF checkout (like its code, they are not copied in this repo)
+    luaLink := {
+      val out = luaLink.value
+      val gui = bffDir.value / "frontend" / "public" / "assets" / "in-game" / "gui"
+      if (gui.exists()) for (image <- bffImages) IO.copyFile(gui / image, out / "assets" / image)
+      else streams.value.log.warn(s"$gui not found: the client draws shapes instead of BFF's images")
+      out
+    }
   )

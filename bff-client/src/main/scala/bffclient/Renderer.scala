@@ -6,7 +6,11 @@ import gamelogic.entities.WithPosition.Angle
 import gamelogic.gameextras.GameMarkerInfo
 import gamelogic.entities.boss.BossEntity
 import gamelogic.entities.classes.PlayerClass
+import gamelogic.entities.classes.hexagon.HexagonZone
+import gamelogic.entities.classes.pentagon.PentagonZone
+import gamelogic.entities.movingstuff.PentagonBullet
 import gamelogic.entities.staticstuff.Obstacle
+import utils.misc.{Colour, RGBColour}
 import gamelogic.gamestate.GameState
 import gamelogic.physics.Complex
 import gamelogic.physics.shape.{Circle, Polygon}
@@ -134,9 +138,22 @@ final class Renderer(client: GameClient) {
       drawShape(obstacle, "line")
     }
 
-    // Other bodies (bullets, zones, adds, ...): outlines
+    // Zones and bullets, in the colour of their owner (like the frontend)
+    def ownerColour(colour: Colour, alpha: Double): Unit =
+      Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0, alpha)
+
+    // Other bodies (zones, bullets, adds, ...)
     for (case body: Body <- entities) body match {
       case _: Obstacle | _: BossEntity | _: PlayerClass => ()
+      case zone: HexagonZone =>
+        ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
+        ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line"); Graphics.setLineWidth(1)
+      case zone: PentagonZone =>
+        ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
+        ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line"); Graphics.setLineWidth(1)
+      case bullet: PentagonBullet =>
+        ownerColour(RGBColour.fromIntColour(bullet.colour), 1)
+        drawShape(bullet, "fill")
       case other =>
         Graphics.setColor(0.2, 0.2, 0.2)
         drawShape(other, "line")
@@ -157,17 +174,50 @@ final class Renderer(client: GameClient) {
       castingBar(boss)
     }
 
-    // Players
+    // Sparks in the hands of a casting player, in the colour of the ability (like the frontend)
+    def castingSparks(player: PlayerClass): Unit =
+      for {
+        sprite <- Sprites.casting
+        info   <- gameState.castingEntityInfo.get(player.id) if info.isCasting(now, 0L)
+      } {
+        val colour = info.ability.abilityColour
+        Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0)
+        val frame = ((now / 50) % sprite.frameCount).toInt
+        for (side <- Seq(1, -1)) {
+          val angle  = rotation(player) + Angle.fromDouble(side * 2 * math.Pi / player.shape.vertices.length)
+          val (x, y) = toScreen(position(player) + Complex.polar(player.shape.radius, angle))
+          sprite.draw(x, y, 0, 16, frame = frame)
+        }
+      }
+
+    // Players: the frontend's sprite of their class, tinted with their colour (or their shape)
     for (player <- gameState.players.values) {
       val (r, g, b) = player.rgb
-      Graphics.setColor(r / 255.0, g / 255.0, b / 255.0)
-      drawShape(player, "fill")
-      Graphics.setColor(0, 0, 0)
-      drawShape(player, "line")
-      nose(player, (1, 1, 1))
+      Sprites.playerClasses.get(player.cls.value) match {
+        case Some(sprite) =>
+          val (x, y) = toScreen(position(player))
+          Graphics.setColor(r / 255.0, g / 255.0, b / 255.0)
+          sprite.draw(x, y, rotation(player).value, 2 * player.shape.radius)
+          val (noseX, noseY) = toScreen(position(player) + Complex.polar(player.shape.radius, rotation(player)))
+          Graphics.setColor(1, 1, 1)
+          Graphics.circle("fill", noseX, noseY, 2)
+        case None =>
+          Graphics.setColor(r / 255.0, g / 255.0, b / 255.0)
+          drawShape(player, "fill")
+          Graphics.setColor(0, 0, 0)
+          drawShape(player, "line")
+          nose(player, (1, 1, 1))
+      }
+      castingSparks(player)
       lifeBar(player)
       castingBar(player)
     }
+
+    // Effects of the abilities (numbers, cleaves, ...)
+    client.effects.draw(
+      id => gameState.entities.get(id).collect { case entity: WithPosition => position(entity) },
+      toScreen
+    )
 
     // Target
     for (id <- client.currentTarget; case target: Body <- gameState.entities.get(id)) {
