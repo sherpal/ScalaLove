@@ -137,6 +137,20 @@ the server. Result: the handshake completes, the boss's AI
 kills our idle triangle in ~13 s (as seen from the client-side game state), our
 movement is applied and echoed by the server, and the ping round trip is 2-4 ms.
 
+Our own movement is predicted, like the frontend does: every frame, the client
+moves its player itself (stopping at obstacles), sends the new position, and
+shows the server's game state with that movement applied on top, instead of
+waiting one round trip for the server's echo. Positions come from the frame's
+duration, so the speed does not depend on the frame rate (BFF's
+`lastValidPosition` ignores moves under 2 units, which happen above ~75 fps:
+small steps are checked against the obstacles directly). Movements are sent
+when starting, stopping, turning or changing direction, and about 60 times per
+second while moving.
+
+To try it with latency, `BFF_LAG_MS` simulates a round trip (half on each way),
+e.g. `BFF_LAG_MS=300 tools/bff-menu-test.sh --window`. Headless, the status
+lines show our predicted position next to the server's.
+
 ### Through the menu server
 
 With `BFF_MENU_URL`, the client first goes through BFF's menu server, over HTTP

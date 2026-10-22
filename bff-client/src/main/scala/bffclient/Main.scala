@@ -83,12 +83,14 @@ object Main {
       println("Connected")
       val (controls, controlsInfo) = ControlsFile.load()
       println(controlsInfo)
+      val lag = env("BFF_LAG_MS", "0").toDouble / 1000
+      if (lag > 0) println(s"Simulated latency: ${lag * 1000} ms round trip")
       if headless then {
-        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => Complex.zero)
+        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => Complex.zero, lag)
         Love.update = dt => client.update(dt)
       } else {
         var renderer: Renderer = null
-        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => renderer.mouseWorld)
+        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => renderer.mouseWorld, lag)
         renderer = new Renderer(client)
         // While an overlay is shown (game menu, end of game), the inputs go to it
         val ui          = new Ui
@@ -120,8 +122,13 @@ final class GameClient(
     headless: Boolean,
     val controls: Controls,
     val controlsInfo: String,
-    mouseWorld: () => Complex
+    mouseWorld: () => Complex,
+    /** Simulated round trip latency in seconds (BFF_LAG_MS), half on each way, to try the prediction. */
+    lag: Double = 0
 ) {
+  private val incoming = scala.collection.mutable.Queue.empty[(Double, String)]
+  private val outgoing = scala.collection.mutable.Queue.empty[(Double, String)]
+
   private var gatherer: ActionGatherer    = GreedyActionGatherer(GameState.empty)
   var myId: Option[Entity.Id]             = None
   var messagesReceived                    = 0
@@ -134,6 +141,7 @@ final class GameClient(
   private var clockOffset                 = 0L
   private var gameBeganAt: Option[Double] = None
   private var scriptedMovements           = 0
+  private var scriptedDirection           = Complex.zero
 
 
   /** Whether the player faces its target (instead of the mouse), toggled by `ToggleTargetLockIn`.
@@ -147,7 +155,11 @@ final class GameClient(
   private var lastError: Option[(String, Double)] = None
   private var castsSent                           = 0
   private val recentTargets = scala.collection.mutable.Map.empty[Entity.Id, Double]
-  private var lastMovementSent: Option[(Boolean, Double, Double)] = None
+  /** Our last movement, shown before the server echoes it (the frontend's "unconfirmed actions"). */
+  private var predictedMovement: Option[MovingBodyMoves] = None
+  private var lastRotationSent: Option[Double]           = None
+  private var lastMovementSentAt                         = 0L
+  private var projectedState: GameState                  = GameState.empty
   private var lastScriptedCast                                    = 0.0
 
   /** The message of the last refused cast, for 2 seconds. */
@@ -258,7 +270,14 @@ final class GameClient(
 
   send(Ready(user))
 
-  def gameState: GameState = gatherer.currentGameState
+  /** The game state from the server, with our predicted movement: what we show and play with. */
+  def gameState: GameState = projectedState
+
+  /** The game state from the server only. */
+  def serverGameState: GameState = gatherer.currentGameState
+
+  private def project(): Unit =
+    projectedState = gatherer.currentGameState.applyActions(predictedMovement.toVector)
 
   /** Estimate of the server's clock (from the ping/pong exchanges), used to interpolate positions.
     */
@@ -268,35 +287,9 @@ final class GameClient(
     val buffer = Pickle.intoBytes[InGameWSProtocol](message)
     val bytes  = new Array[Byte](buffer.remaining())
     buffer.get(bytes)
-    ws.send(ScalaLove.bytesToString(bytes))
+    if (lag > 0) outgoing.enqueue((elapsed + lag / 2, ScalaLove.bytesToString(bytes)))
+    else ws.send(ScalaLove.bytesToString(bytes))
   }
-
-  private def sendMovement(direction: Complex, moving: Boolean): Unit =
-    for {
-      id <- myId
-      me <- gameState.players.get(id)
-    } {
-      val now      = serverNow
-      val position = me.currentPosition(now)
-      val angle    = if (moving) direction.arg else me.direction
-      val rotation = if (moving) direction.arg else me.rotation
-      send(
-        GameActionWrapper(
-          Vector(
-            MovingBodyMoves(
-              GameAction.Id.zero,
-              now,
-              id,
-              position,
-              angle,
-              rotation,
-              Constants.playerSpeed,
-              moving
-            )
-          )
-        )
-      )
-    }
 
   def quit(): Unit = {
     ws.close()
@@ -326,11 +319,16 @@ final class GameClient(
 
     var data = ws.poll()
     while (data != null) {
-      bytesReceived += data.length
-      messagesReceived += 1
-      handle(Unpickle[InGameWSProtocol].fromBytes(ByteBuffer.wrap(ScalaLove.stringToBytes(data))))
+      incoming.enqueue((elapsed + lag / 2, data))
       data = ws.poll()
     }
+    while (incoming.nonEmpty && incoming.head._1 <= elapsed) {
+      val (_, message) = incoming.dequeue()
+      bytesReceived += message.length
+      messagesReceived += 1
+      handle(Unpickle[InGameWSProtocol].fromBytes(ByteBuffer.wrap(ScalaLove.stringToBytes(message))))
+    }
+    while (outgoing.nonEmpty && outgoing.head._1 <= elapsed) ws.send(outgoing.dequeue()._2)
 
     if (elapsed - lastStatus >= 1.0) {
       lastStatus = elapsed
@@ -339,9 +337,11 @@ final class GameClient(
       if (headless) println(status)
     }
 
+    project()
     if (gameBeganAt.isDefined && !finished) {
-      if (headless) { scriptedMovement(); scriptedCasts() }
-      else keyboardMovement()
+      if (headless) { scriptedMovement(dt); scriptedCasts() }
+      else keyboardMovement(dt)
+      project()
     }
 
     if (headless && (gameState.ended || elapsed > 60 || !ws.isOpen())) {
@@ -356,9 +356,9 @@ final class GameClient(
   }
 
   /** Movement from the held direction controls, facing the mouse (or the target when locked in),
-    * like the frontend. A movement is sent to the server when it changes.
+    * like the frontend.
     */
-  private def keyboardMovement(): Unit =
+  private def keyboardMovement(dt: Double): Unit =
     for {
       id <- myId
       me <- gameState.players.get(id)
@@ -372,57 +372,73 @@ final class GameClient(
       val held = directionKeys.collect {
         case (input, code) if !menuOpen && LoveInput.isDown(code) => input
       }.toSet
-      val direction = UserInput.movingDirection(held)
-      val moving    = direction != Complex.zero
-      val now       = serverNow
-      val position  = me.currentPosition(now)
+      val now      = serverNow
+      val position = me.currentPosition(now)
       val facing = (for {
         targetId <- currentTarget if lockInToTarget
         case target: Body <- gameState.entities.get(targetId)
       } yield target.currentPosition(now) - position).getOrElse(mouseWorld() - position)
-      // Rounded, so that tiny mouse moves do not flood the server
-      val rotation = math.round(facing.arg.value * 50) / 50.0
-      val angle    = if (moving) math.round(direction.arg.value * 50) / 50.0 else 0.0
-      val movement = (moving, angle, rotation)
-      if (!lastMovementSent.contains(movement)) {
-        lastMovementSent = Some(movement)
-        send(
-          GameActionWrapper(
-            Vector(
-              MovingBodyMoves(
-                GameAction.Id.zero,
-                now,
-                id,
-                position,
-                if (moving) direction.arg else me.direction,
-                facing.arg,
-                Constants.playerSpeed,
-                moving
-              )
-            )
-          )
-        )
+      move(UserInput.movingDirection(held), facing, dt)
+    }
+
+  /** Moves our player for this frame, like the frontend: the new position is computed here (with the
+    * obstacles), sent to the server, and shown right away on top of the server's game state, without
+    * waiting for the server to echo it (one round trip later).
+    */
+  private def move(direction: Complex, facing: Complex, dt: Double): Unit =
+    for {
+      id <- myId
+      me <- gameState.players.get(id)
+    } {
+      val now       = serverNow
+      val moving    = direction != Complex.zero
+      val obstacles = gameState.obstacles.values
+      val position =
+        if (moving) {
+          // At most 100 ms, so that a long frame does not make us jump
+          val step   = me.speed * math.min(dt, 0.1) * Complex.rotation(direction.arg)
+          val target = me.pos + step // our previous frame (predicted) position
+          // BFF's lastValidPosition ignores moves under 2 units, which are common at high frame rates
+          if (step.modulus >= 2) me.lastValidPosition(target, obstacles)
+          else if (obstacles.exists(o => o.shape.collides(o.pos, o.rotation, me.shape, target, me.rotation))) me.pos
+          else target
+        } else me.currentPosition(now, obstacles)
+      val action = MovingBodyMoves(GameAction.Id.zero, now, id, position,
+        if (moving) direction.arg else me.direction, facing.arg, me.speed, moving)
+      // Sent when starting, stopping, turning or changing direction, and about 60 times per second
+      // while moving (the rotation is rounded, so that tiny mouse moves do not flood the server)
+      val rotation         = math.round(facing.arg.value * 50) / 50.0
+      val directionChanged = moving && me.direction != action.direction
+      if (moving != me.moving || directionChanged || !lastRotationSent.contains(rotation) ||
+          (moving && now - lastMovementSentAt >= 16)) {
+        lastRotationSent = Some(rotation)
+        lastMovementSentAt = now
+        send(GameActionWrapper(Vector(action)))
       }
+      predictedMovement = Some(action)
     }
 
   /** Two seconds after the start, walk towards the boss for one second. */
-  private def scriptedMovement(): Unit =
+  private def scriptedMovement(dt: Double): Unit =
     for {
       began <- gameBeganAt
       boss  <- gameState.bosses.values.headOption
       id    <- myId
       me    <- gameState.players.get(id)
-    }
-      if (scriptedMovements == 0 && elapsed - began > 2) {
-        val now = serverNow
-        println(s"Sending a movement towards the boss from ${me.currentPosition(now)}")
-        sendMovement(boss.currentPosition(now) - me.currentPosition(now), moving = true)
+    } {
+      val towardsBoss = boss.currentPosition(serverNow) - me.currentPosition(serverNow)
+      val walking     = elapsed - began > 2 && elapsed - began <= 3
+      if (walking && scriptedMovements == 0) {
+        println(s"Walking towards the boss from ${me.currentPosition(serverNow)}")
+        scriptedDirection = towardsBoss.safeNormalized
         scriptedMovements += 1
-      } else if (scriptedMovements == 1 && elapsed - began > 3) {
-        println(s"Sending a stop at ${me.currentPosition(serverNow)}")
-        sendMovement(Complex.zero, moving = false)
+      } else if (!walking && scriptedMovements == 1) {
+        val server = serverGameState.players.get(id).map(_.currentPosition(serverNow))
+        println(s"Stopping at ${me.currentPosition(serverNow)} (server: ${server.getOrElse("-")})")
         scriptedMovements += 1
       }
+      move(if (walking) scriptedDirection else Complex.zero, towardsBoss, dt)
+    }
 
   /** Once at the boss, hit it (the triangle's Direct Hit) every half second. */
   private def scriptedCasts(): Unit =
@@ -443,9 +459,10 @@ final class GameClient(
   private def status: String = {
     val bosses =
       gameState.bosses.values.map(b => s"${b.name} life=${math.round(b.life)}").mkString(", ")
+    def show(z: Complex) = s"(${math.round(z.re)}, ${math.round(z.im)})"
     val me = myId.flatMap(gameState.players.get).fold("-") { p =>
-      val pos = p.currentPosition(serverNow)
-      s"life=${math.round(p.life)} pos=(${math.round(pos.re)}, ${math.round(pos.im)})"
+      val server = myId.flatMap(serverGameState.players.get).fold("-")(s => show(s.currentPosition(serverNow)))
+      s"life=${math.round(p.life)} pos=${show(p.currentPosition(serverNow))} (server: $server)"
     }
     s"[t=${math.round(elapsed * 10) / 10.0}s] messages=$messagesReceived actions=$actionsReceived entities=${gameState.entities.size} " +
       s"boss: [$bosses] me: $me rtt=${roundTrip}ms started=${gameState.started} ended=${gameState.ended}"
