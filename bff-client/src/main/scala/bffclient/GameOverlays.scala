@@ -43,3 +43,27 @@ final class EndOfGame(client: GameClient, backToMenus: Option[() => Unit]) {
     }
   }
 }
+
+/** The game menu, opened with Escape during the game. The game cannot be paused (it is played
+  * online), so it goes on meanwhile.
+  */
+final class GameMenu(client: GameClient, leaveGame: Option[() => Unit]) {
+
+  def draw(ui: Ui): Unit = {
+    val screen          = Graphics.getDimensions()
+    val (width, height) = (screen.width.toDouble, screen.height.toDouble)
+    ui.fill(Rect(0, 0, width, height), Theme.background.withAlpha(0.5))
+    val buttonCount = if (leaveGame.isDefined) 3 else 2
+    val box         = Rect(width / 2 - 180, height / 2 - 70 - 30 * buttonCount, 360, 140 + 60 * buttonCount)
+    ui.panel(box)
+    ui.textIn("Menu", Rect(box.x, box.y + 16, box.width, 50), Theme.title)
+    ui.textIn("The game goes on meanwhile", Rect(box.x, box.y + 66, box.width, 24), Theme.small, Theme.muted)
+
+    def button(index: Int, label: String, style: ButtonStyle) =
+      ui.button(label, Rect(box.x + 40, box.y + 110 + 60 * index, box.width - 80, 44), style = style)
+
+    if (button(0, "Resume", ButtonStyle.Primary) || ui.wasPressed("escape")) client.menuOpen = false
+    leaveGame.foreach(leave => if (button(1, "Leave game", ButtonStyle.Normal)) leave())
+    if (button(buttonCount - 1, "Quit", ButtonStyle.Danger)) client.quit()
+  }
+}

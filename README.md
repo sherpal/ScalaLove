@@ -158,6 +158,11 @@ frontend's Laminar pages (`MenuScreens.scala`):
 The pseudo, class, colour and boss are remembered in `menu.json` in LÖVE's save
 directory (the frontend keeps them in its local storage).
 
+During the game, Escape opens a menu with "Resume" (or Escape again), "Leave
+game" and "Quit". The game cannot pause (it is played online): it goes on, and
+the player stops moving. Leaving goes back to the menus; the game's server is
+stopped only if we are its only human player, so that the others go on playing.
+
 When the game ends (or the game server closes the connection), an overlay shows
 the outcome, with "Back to menus" (Enter) and "Quit" (Escape). Going back stops
 the game's server through the menu server (like the frontend's "stop" button:

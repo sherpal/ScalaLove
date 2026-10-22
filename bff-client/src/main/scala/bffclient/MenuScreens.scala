@@ -82,9 +82,10 @@ final class MenuApp(val api: MenuApi, startGame: (GameAccess, GameExit => Unit) 
     Love.keyreleased = null
     install()
     exit match {
-      case GameExit.Ended =>
+      case GameExit.Ended | GameExit.LeftEarly(true) =>
         // Fails when another player stopped it already
         api.stopGameServer(gameId).failed.foreach(failure => println(s"[menu] Game server not stopped: ${failure.getMessage}"))
+      case GameExit.LeftEarly(false)     => () // the others go on playing
       case GameExit.ConnectionLost       => notify("The connection to the game server was lost", isError = true)
       case GameExit.CannotConnect(error) => notify(s"Cannot connect to the game server: $error", isError = true)
     }

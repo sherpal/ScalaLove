@@ -90,25 +90,25 @@ object Main {
         var renderer: Renderer = null
         val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => renderer.mouseWorld)
         renderer = new Renderer(client)
-        // Once the game is finished, the inputs go to the end of game overlay
-        val ui        = new Ui
-        val endOfGame = new EndOfGame(client, backToMenus.map(back => () => {
-          val exit = if (client.gameState.ended) GameExit.Ended else GameExit.ConnectionLost
-          client.leave()
-          back(exit)
-        }))
+        // While an overlay is shown (game menu, end of game), the inputs go to it
+        val ui          = new Ui
+        val leave       = backToMenus.map(back => () => { val exit = client.exit; client.leave(); back(exit) })
+        val gameMenu    = new GameMenu(client, leave)
+        val endOfGame   = new EndOfGame(client, leave)
+        def overlayShown = client.finished || client.menuOpen
         Love.update = dt => client.update(dt)
         Love.draw = () => {
           renderer.draw()
           if (client.finished) ui.frame(endOfGame.draw(ui))
+          else if (client.menuOpen) ui.frame(gameMenu.draw(ui))
         }
         Love.keypressed = (_, scancode, isRepeat) =>
-          if (client.finished) ui.keyPressed(scancode) else if (!isRepeat) client.keyPressed(scancode)
-        Love.keyreleased = (_, scancode) => if (!client.finished) client.keyReleased(scancode)
+          if (overlayShown) ui.keyPressed(scancode) else if (!isRepeat) client.keyPressed(scancode)
+        Love.keyreleased = (_, scancode) => if (!overlayShown) client.keyReleased(scancode)
         Love.mousepressed = (x, y, button, _, _) =>
-          if (client.finished) ui.mousePressed(x, y, button)
+          if (overlayShown) ui.mousePressed(x, y, button)
           else if (button == 1) client.clicked(renderer.toWorld(x, y))
-        Love.mousereleased = (x, y, button, _, _) => if (client.finished) ui.mouseReleased(x, y, button)
+        Love.mousereleased = (x, y, button, _, _) => if (overlayShown) ui.mouseReleased(x, y, button)
       }
     }
   }
@@ -176,10 +176,14 @@ final class GameClient(
       if (headless) println(s"Cast refused: $message")
   }
 
-  /** Escape is not part of the controls: it cancels the zone placement, or quits. */
+  /** Escape is not part of the controls: it cancels the zone placement, or opens the game menu (or
+    * quits, when headless).
+    */
   def keyPressed(scancode: String): Unit =
     if scancode == "escape" then {
-      if choosingPosition.isDefined then choosingPosition = None else quit()
+      if choosingPosition.isDefined then choosingPosition = None
+      else if headless then quit()
+      else menuOpen = true
     }
 
   /** Like the frontend, inputs are triggered when keys are released. Movement is polled every
@@ -302,6 +306,18 @@ final class GameClient(
   /** The game ended, or the game server closed the connection. */
   def finished: Boolean = gameState.ended || !ws.isOpen()
 
+  /** The game menu (opened with Escape). The game goes on, but the player stops moving. */
+  var menuOpen = false
+
+  /** The human players of the game (the AIs are not included). */
+  private var humanPlayers = Vector.empty[String]
+
+  /** How leaving the game now would end it. */
+  def exit: GameExit =
+    if (gameState.ended) GameExit.Ended
+    else if (!ws.isOpen()) GameExit.ConnectionLost
+    else GameExit.LeftEarly(onlyHuman = humanPlayers.forall(_ == user))
+
   /** Closes the connection to the game server (e.g. to go back to the menus). */
   def leave(): Unit = ws.close()
 
@@ -354,7 +370,7 @@ final class GameClient(
         UserInput.Right -> controls.rightKey
       )
       val held = directionKeys.collect {
-        case (input, code) if LoveInput.isDown(code) => input
+        case (input, code) if !menuOpen && LoveInput.isDown(code) => input
       }.toSet
       val direction = UserInput.movingDirection(held)
       val moving    = direction != Complex.zero
@@ -438,6 +454,7 @@ final class GameClient(
   private def handle(message: InGameWSProtocol): Unit = message match {
     case AllPlayers(names) =>
       println(s"<- AllPlayers(${names.mkString(", ")})")
+      humanPlayers = names.toVector
     case BuddyIsReady(name) =>
       println(s"<- BuddyIsReady($name)")
       if (name == user) send(ReadyToStart(user))

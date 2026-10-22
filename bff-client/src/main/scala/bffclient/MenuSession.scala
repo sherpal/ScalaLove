@@ -14,6 +14,8 @@ final case class GameAccess(host: String, port: Int, userName: String, gameId: S
 enum GameExit {
   /** The game ended (its server can be stopped). */
   case Ended
+  /** The player left during the game (if the only human player, its server can be stopped). */
+  case LeftEarly(onlyHuman: Boolean)
   /** The game server closed the connection before the end of the game. */
   case ConnectionLost
   case CannotConnect(error: String)
