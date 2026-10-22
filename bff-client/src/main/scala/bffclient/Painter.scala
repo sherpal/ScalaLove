@@ -1,6 +1,7 @@
 package bffclient
 
 import bffclient.ui.Colour as Paint
+import gamelogic.buffs.Buff
 import gamelogic.entities.{Body, Entity, LivingEntity, WithPosition}
 import gamelogic.entities.WithPosition.Angle
 import gamelogic.gamestate.GameState
@@ -99,6 +100,33 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
     Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius * ratio, 5)
     Graphics.setColor(0, 0, 0)
     Graphics.rectangle("line", x - radius, y - 2.5, 2 * radius, 5)
+  }
+
+  /** The buffs of the entity that have an icon, the oldest first (like the frontend's buff containers). */
+  def iconBuffs(entityId: Entity.Id): Seq[(Buff, Sprite)] =
+    gameState.allBuffsOfEntity(entityId).toSeq.sortBy(_.appearanceTime)
+      .flatMap(buff => Sprites.buffIcons.get(buff.resourceIdentifier).map(buff -> _))
+
+  /** A row of the entity's buff icons above its life bar. Like the frontend, the icons of the buffs
+    * that end are darkened from the top, by the part of their duration that remains.
+    */
+  def buffIcons(entity: Entity & Body): Unit = {
+    val buffs = iconBuffs(entity.id)
+    if (buffs.nonEmpty) {
+      val size   = 16.0
+      val (x, y) = toScreen(position(entity) + Complex.i * (entity.shape.radius + 10))
+      val left   = x - buffs.size * (size + 2) / 2
+      val top    = y - 2.5 - 3 - size
+      for (((buff, icon), i) <- buffs.zipWithIndex) {
+        val iconLeft = left + i * (size + 2) + 1
+        Graphics.setColor(1, 1, 1)
+        icon.draw(iconLeft + size / 2, top + size / 2, 0, size, size)
+        if (buff.isFinite) {
+          Graphics.setColor(0, 0, 0, 0.5)
+          Graphics.rectangle("fill", iconLeft, top, size, size * buff.remainingPercentage(gameState.time))
+        }
+      }
+    }
   }
 
   def castingBar(entity: Entity & Body): Unit =

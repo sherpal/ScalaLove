@@ -99,6 +99,17 @@ val bffImages = Seq(
 ).map(icon => s"abilities/$icon.png") ++ Seq( // boss specific
   "boss/dawn-of-time/boss102/damage-zone-animation.png",
   "boss/dawn-of-time/boss102/living-damage-zone-animation.png"
+) ++ Seq( // the icons of the buffs (those which are not icons of abilities)
+  "abilities/boss101-big-dot.png",
+  "boss/dawn-of-time/boss102/living-damage-zone.png",
+  "boss/dawn-of-time/boss104/twin-debuff.png",
+  "boss/dawn-of-time/boss105/volatile-charge.png",
+  "boss/dawn-of-time/boss105/twin-bond.png",
+  "boss/dawn-of-time/boss105/mourning.png",
+  "boss/dawn-of-time/boss105/yearning.png",
+  "boss/first-raid/sir-of-vice/punished.png",
+  "boss/first-raid/sir-of-vice/purified.png",
+  "boss/first-raid/sir-of-vice/inflamed.png"
 )
 
 // Experiment: a LÖVE client for Battle for Flatland (menus and game)

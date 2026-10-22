@@ -1,6 +1,7 @@
 package bffclient
 
 import gamelogic.abilities.Ability
+import gamelogic.buffs.Buff
 
 /** An image, or a sheet of `rows` x `columns` animation frames. */
 final class Sprite(image: Image, rows: Int = 1, columns: Int = 1) {
@@ -50,6 +51,28 @@ object Sprites {
   lazy val damageZone: Option[Sprite]       = load("boss/dawn-of-time/boss102/damage-zone-animation.png", columns = 12)
   lazy val livingDamageZone: Option[Sprite] =
     load("boss/dawn-of-time/boss102/living-damage-zone-animation.png", rows = 3, columns = 5)
+
+  /** The icons of the buffs, like the frontend's `Asset.buffAssetMap`, without the permanent buffs of
+    * the classes (the square's shield, the resource fillers), which every player of the class has, and
+    * without Boss 110's.
+    */
+  lazy val buffIcons: Map[Buff.ResourceIdentifier, Sprite] = Seq(
+    Buff.hexagonHotIdentifier     -> "abilities/hexagon-hot",
+    Buff.boss101BigDotIdentifier  -> "abilities/boss101-big-dot",
+    Buff.triangleUpgradeDirectHit -> "abilities/triangle-upgrade-direct-hit",
+    Buff.triangleStun             -> "abilities/triangle-stun",
+    Buff.silence                  -> "abilities/triangle-cut",
+    Buff.squareEnrage             -> "abilities/square-enrage",
+    Buff.boss102LivingDamageZone  -> "boss/dawn-of-time/boss102/living-damage-zone",
+    Buff.sirOfVicePunished        -> "boss/first-raid/sir-of-vice/punished",
+    Buff.sirOfVicePurified        -> "boss/first-raid/sir-of-vice/purified",
+    Buff.sirOfViceInflamed        -> "boss/first-raid/sir-of-vice/inflamed",
+    Buff.boss104TwinDebuff        -> "boss/dawn-of-time/boss104/twin-debuff",
+    Buff.boss105VolatileCharge    -> "boss/dawn-of-time/boss105/volatile-charge",
+    Buff.boss105TwinBond          -> "boss/dawn-of-time/boss105/twin-bond",
+    Buff.boss105Mourning          -> "boss/dawn-of-time/boss105/mourning",
+    Buff.boss105Yearning          -> "boss/dawn-of-time/boss105/yearning"
+  ).flatMap((id, icon) => load(s"$icon.png").map(id -> _)).toMap
 
   /** The icons of the abilities, like the frontend's `Asset.abilityAssetMap`. */
   lazy val abilityIcons: Map[Ability.AbilityId, Sprite] = Seq(

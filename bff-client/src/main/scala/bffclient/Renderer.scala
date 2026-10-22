@@ -153,6 +153,7 @@ final class Renderer(client: GameClient) {
       castingSparks(player)
       lifeBar(player)
       castingBar(player)
+      buffIcons(player)
     }
 
     // Effects of the abilities (numbers, cleaves, ...)
@@ -175,7 +176,11 @@ final class Renderer(client: GameClient) {
       val markerPosition = info match {
         case GameMarkerInfo.FixedGameMarker(_, gamePosition) => Some(gamePosition)
         case GameMarkerInfo.GameMarkerOnEntity(_, entityId) =>
-          gameState.entities.get(entityId).collect { case b: Body => position(b) + Complex.i * (b.shape.radius + 24) }
+          // Above the buff icons of the players
+          gameState.entities.get(entityId).collect { case b: Body =>
+            val aboveIcons = if (gameState.players.contains(entityId) && iconBuffs(entityId).nonEmpty) 20 else 0
+            position(b) + Complex.i * (b.shape.radius + 24 + aboveIcons)
+          }
       }
       markerPosition.foreach { p =>
         val (x, y) = toScreen(p)

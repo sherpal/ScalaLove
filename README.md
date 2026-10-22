@@ -168,7 +168,10 @@ of the triangle's direct hit. Each action has its effects once, even when the
 server sends it again. The numbers follow their entity. Hexagon and pentagon
 zones are drawn in their owner's colour, and pentagon bullets too. The action
 bar shows the frontend's ability icons, darkened from the top during their
-cooldown and pushed down for a moment when used.
+cooldown and pushed down for a moment when used. Above each player, the icons
+of their buffs and debuffs (the frontend's, oldest first), darkened by the part
+of their duration that remains. The permanent buffs that every player of a class
+has (the square's shield, the resource fillers) are not shown.
 
 What is specific to each boss is drawn like the frontend's
 `bossspecificdrawers` (`BossVisuals.scala`): Boss 102's hounds, damage zones
