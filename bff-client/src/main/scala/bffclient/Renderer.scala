@@ -256,13 +256,13 @@ final class Renderer(client: GameClient) {
   /** Ping, controls, target and messages (the lives are in the HUD's frames). */
   private def infoLines(gameState: GameState, width: Int): Unit = {
     Graphics.setColor(0, 0, 0)
-    Graphics.print(s"ping: ${client.roundTrip} ms   messages: ${client.messagesReceived}", 10, 46)
+    Graphics.print(s"ping: ${client.roundTrip} ms   messages: ${client.messagesReceived}", 10, 72)
     val c = client.controls
     Graphics.print(
       s"Move: ${c.upKey.label} ${c.leftKey.label} ${c.downKey.label} ${c.rightKey.label}   " +
         s"Next target: ${c.nextTargetKey.label} (or click)   " +
         s"Face target: ${c.targetLockInToggleKey.label} (${if (client.lockInToTarget) "on" else "off"})   Escape: menu",
-      10, 64)
+      10, 90)
     val target = client.currentTarget.flatMap(gameState.entities.get).collect { case l: LivingEntity => l }
       .fold("Target: none") { t =>
         val name = t match {
@@ -271,22 +271,22 @@ final class Renderer(client: GameClient) {
         }
         s"Target: $name (${math.round(t.life)} / ${math.round(t.maxLife)})"
       }
-    Graphics.print(target, 10, 82)
+    Graphics.print(target, 10, 108)
     Graphics.setColor(0.3, 0.3, 0.3)
-    Graphics.print(client.controlsInfo, 10, 100)
+    Graphics.print(client.controlsInfo, 10, 126)
     Graphics.setColor(0, 0, 0)
     val message =
       if (gameState.ended) (if (gameState.playersWon) "Victory!" else "Defeat...")
       else if (!gameState.started) "Waiting for the game to start..."
       else ""
-    if (message.nonEmpty) Graphics.printf(message, 0, 120, width, "center")
+    if (message.nonEmpty) Graphics.printf(message, 0, 170, width, "center")
     client.errorMessage.foreach { error =>
       Graphics.setColor(0.8, 0, 0)
-      Graphics.printf(error, 0, 140, width, "center")
+      Graphics.printf(error, 0, 190, width, "center")
     }
     if (client.choosingPosition.isDefined) {
       Graphics.setColor(0, 0, 0)
-      Graphics.printf("Click to place the zone (Escape to cancel)", 0, 160, width, "center")
+      Graphics.printf("Click to place the zone (Escape to cancel)", 0, 210, width, "center")
     }
   }
 }

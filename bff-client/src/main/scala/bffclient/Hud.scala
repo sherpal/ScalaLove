@@ -195,11 +195,13 @@ final class Hud(client: GameClient) {
       text(f"${remaining / 1000.0}%.1f", inner, "right")
     }
 
-  /** Life and name of the boss, and what it casts. */
+  /** Life and name of the boss, what it casts, and its buffs. */
   private def bossFrame(p: Painter, width: Double): Unit =
     for (boss <- p.gameState.bosses.values.headOption) {
-      val casting = p.gameState.castingEntityInfo.get(boss.id).filter(_.isCasting(p.now, 0L))
-      val rect    = Rect(width / 2 - 150, 4, 300, if (casting.isDefined) 44 else 28)
+      val casting  = p.gameState.castingEntityInfo.get(boss.id).filter(_.isCasting(p.now, 0L))
+      val buffs    = p.iconBuffs(boss.id)
+      val buffsTop = 4 + (if (casting.isDefined) 42 else 26)
+      val rect     = Rect(width / 2 - 150, 4, 300, buffsTop - 4 + (if (buffs.nonEmpty) 19 else 2))
       panel(rect)
       val lifeBar = Rect(rect.x + 5, rect.y + 5, rect.width - 10, 18)
       val life    = ratio(boss.life, boss.maxLife)
@@ -211,6 +213,8 @@ final class Hud(client: GameClient) {
         bar(castBar, castProgress(p, info), softened(info.ability.abilityColour))
         text(abilityName(boss, info.ability.abilityId), castBar, "center")
       }
+      for (((buff, icon), i) <- buffs.zipWithIndex.take(18))
+        p.buffIcon(buff, icon, rect.x + 6 + i * 16, buffsTop, 14)
       clickable :+= (rect, boss.id)
     }
 
