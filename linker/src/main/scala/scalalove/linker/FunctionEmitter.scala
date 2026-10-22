@@ -1136,6 +1136,7 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
       case JSBinaryOp.&&  => infix("and")
       case JSBinaryOp.||  => infix("or")
       case JSBinaryOp.in  => fn("R.jin")
+      case JSBinaryOp.instanceof => fn("R.jinstanceof")
       case JSBinaryOp.**  => infix("^")
       case _              => call("R.unsupported", List(luaString(s"JS binary op $op")))
     }

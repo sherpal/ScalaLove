@@ -54,6 +54,12 @@ lazy val game = luaProject(project)
 
 // A headless program checking the semantics of the generated Lua code
 lazy val selftest = luaProject(project)
+  .settings(
+    libraryDependencies ++= Seq(
+      "io.circe" %%% "circe-parser"  % "0.14.9",
+      "io.circe" %%% "circe-generic" % "0.14.9"
+    )
+  )
 
 // Experiment: BattleForFlatland's game logic (published locally from that repo with
 // `sharedJS/publishLocal sharedJVM/publishLocal`, organization local.bff), run on the JVM and in Lua.

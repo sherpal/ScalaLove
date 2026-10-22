@@ -8,6 +8,8 @@ enum Color {
 
 final case class Point(x: Int, y: Int)
 
+final case class JsonPoint(x: Int, label: Option[String], tags: List[String])
+
 sealed trait Shape
 final case class Circle(r: Double) extends Shape
 final case class Rect(w: Double, h: Double) extends Shape
@@ -145,6 +147,26 @@ object Main {
     same("multiple returns, fewer values", LuaString.findAny("abc", "z"), (null, null))
     same("named tuple fields", { val r = LuaString.findNamed("hello", "ll"); r.end - r.start }, 1)
     same("named tuple destructuring", { val (start = s, end = e) = LuaString.findNamed("hello", "ll"); s * 10 + e }, 34)
+
+    // JSON (circe's Scala.js parser uses JSON.parse)
+    import io.circe.{Decoder, Json}
+    import io.circe.parser.{decode, parse}
+    val parsed = parse("""{"z": 1, "a": [1, 2.5, -3e2, null], "n": null, "s": "h\u00e9\"\n", "t": true, "o": {"x": []}}""")
+    same("json parse", parsed, Right(Json.obj(
+      "z" -> Json.fromInt(1),
+      "a" -> Json.arr(Json.fromInt(1), Json.fromDoubleOrNull(2.5), Json.fromDoubleOrNull(-300), Json.Null),
+      "n" -> Json.Null,
+      "s" -> Json.fromString("hé\"\n"),
+      "t" -> Json.True,
+      "o" -> Json.obj("x" -> Json.arr())
+    )))
+    same("json key order", parse("""{"z":1,"a":2,"m":null}""").map(_.noSpaces), Right("""{"z":1,"a":2,"m":null}"""))
+    same("json surrogate pair", parse("\"\\ud83d\\ude00\"").map(_.asString), Right(Some("😀")))
+    check("json invalid", parse("""{"a": }""").isLeft)
+    check("json trailing", parse("""[1] 2""").isLeft)
+    given Decoder[JsonPoint] = io.circe.generic.semiauto.deriveDecoder
+    same("json decode case class", decode[JsonPoint]("""{"x": 3, "label": null, "tags": ["a", "b"]}"""),
+      Right(JsonPoint(3, None, List("a", "b"))))
 
     println(s"$count checks, $failures failures")
     if (failures > 0) throw new AssertionError(s"$failures failures")

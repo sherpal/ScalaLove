@@ -14,7 +14,6 @@ import gamelogic.gamestate.gameactions.MovingBodyMoves
 import gamelogic.physics.Complex
 import models.bff.ingame.{Controls, InGameWSProtocol, UserInput}
 import models.bff.ingame.InGameWSProtocol.*
-import models.syntax.Pointed
 
 /** Connects to a real Battle for Flatland game server, plays the start-of-game handshake like the
   * frontend, keeps a client-side copy of the game state from the server's updates, and renders it.
@@ -36,12 +35,14 @@ object Main {
       Event.quit(1)
     } else {
       println("Connected")
+      val (controls, controlsInfo) = ControlsFile.load()
+      println(controlsInfo)
       if headless then {
-        val client = new GameClient(connection.socket, user, headless, () => Complex.zero)
+        val client = new GameClient(connection.socket, user, headless, controls, controlsInfo, () => Complex.zero)
         Love.update = dt => client.update(dt)
       } else {
         var renderer: Renderer = null
-        val client = new GameClient(connection.socket, user, headless, () => renderer.mouseWorld)
+        val client = new GameClient(connection.socket, user, headless, controls, controlsInfo, () => renderer.mouseWorld)
         renderer = new Renderer(client)
         Love.update = dt => client.update(dt)
         Love.draw = () => renderer.draw()
@@ -54,7 +55,14 @@ object Main {
   }
 }
 
-final class GameClient(ws: WebSocket, user: String, headless: Boolean, mouseWorld: () => Complex) {
+final class GameClient(
+    ws: WebSocket,
+    user: String,
+    headless: Boolean,
+    val controls: Controls,
+    val controlsInfo: String,
+    mouseWorld: () => Complex
+) {
   private var gatherer: ActionGatherer    = GreedyActionGatherer(GameState.empty)
   var myId: Option[Entity.Id]             = None
   var messagesReceived                    = 0
@@ -68,8 +76,6 @@ final class GameClient(ws: WebSocket, user: String, headless: Boolean, mouseWorl
   private var gameBeganAt: Option[Double] = None
   private var scriptedMovements           = 0
 
-  /** The frontend's default controls (`Controls` can also be customized and stored as JSON). */
-  val controls: Controls = Pointed[Controls].unit
 
   /** Whether the player faces its target (instead of the mouse), toggled by `ToggleTargetLockIn`.
     */

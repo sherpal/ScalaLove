@@ -33,9 +33,9 @@ Other tasks (available on every Lua project):
 | `luaTest`     | `luaLink`, then runs it headlessly with `luajit` (fake `love` table)|
 | `luaProbe`    | Prints the linked classes and IR node statistics (debugging)        |
 
-`sbt selftest/luaTest` runs a program checking ~65 language/library behaviours
+`sbt selftest/luaTest` runs a program checking ~70 language/library behaviours
 (Int/Long overflow, strings, case classes, enums, collections, exceptions,
-multiple return values, ...).
+multiple return values, JSON with circe, ...).
 
 To take screenshots from inside LÖVE (useful to check rendering from a script),
 optionally simulating held keys:
@@ -120,7 +120,15 @@ the DOM key codes used by `Controls` (`bff-client/.../LoveInput.scala`), then to
 `UserInput`s, handled like in the frontend: abilities as in
 `CastAbilitiesHandler` (same legality checks), next target as in
 `NextTargetHandler`, markers sent as `UpdateMarker`. A click selects a target
-or places a zone. The headless run also casts Direct Hit on the boss through
+or places a zone.
+
+The controls are read from `controls.json` in LÖVE's save directory
+(`~/.local/share/love/scalalove-bff/` on Linux), written with the default
+controls on the first run. It accepts the JSON of a `Controls`, or what the
+browser frontend stores in its local storage under the key `controls`
+(`{"element": ..., "timestamp": ...}`), so custom bindings can be copied from
+the browser. Decoding uses circe, whose Scala.js parser calls `JSON.parse`: the
+runtime emulates it (objects keep their key order and `null` values). The headless run also casts Direct Hit on the boss through
 the server. Result: the handshake completes, the boss's AI
 kills our idle triangle in ~13 s (as seen from the client-side game state), our
 movement is applied and echoed by the server, and the ping round trip is 2-4 ms.
@@ -212,8 +220,8 @@ library pick its pure Scala fallbacks over newer JS built-ins (e.g. heap
 `ByteBuffer`s instead of typed arrays).
 
 The Scala.js standard library itself calls a few JavaScript built-ins
-(`Math.max`, `Object.prototype.hasOwnProperty`, JS arrays, string methods, ...);
-the runtime emulates those in `R.js`.
+(`Math.max`, `Object.prototype.hasOwnProperty`, JS arrays, string methods,
+`JSON.parse`/`JSON.stringify`, `instanceof`, ...); the runtime emulates those in `R.js`.
 
 ## Known limitations
 

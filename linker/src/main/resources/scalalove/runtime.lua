@@ -234,8 +234,14 @@ end
 local function utf8char(c)
   if c < 0x80 then return strchar(c)
   elseif c < 0x800 then return strchar(0xC0 + rshift(c, 6), 0x80 + band(c, 0x3F))
-  else return strchar(0xE0 + rshift(c, 12), 0x80 + band(rshift(c, 6), 0x3F), 0x80 + band(c, 0x3F)) end
+  elseif c < 0x10000 then
+    return strchar(0xE0 + rshift(c, 12), 0x80 + band(rshift(c, 6), 0x3F), 0x80 + band(c, 0x3F))
+  else
+    return strchar(0xF0 + rshift(c, 18), 0x80 + band(rshift(c, 12), 0x3F),
+      0x80 + band(rshift(c, 6), 0x3F), 0x80 + band(c, 0x3F))
+  end
 end
+R.utf8char = utf8char
 
 -- Char -> String. Strings are byte strings: chars < 256 map to one byte.
 function R.chr(c)
@@ -567,11 +573,7 @@ js.Object = {
     if a == 0 and b == 0 then return 1 / a == 1 / b end
     return a == b
   end,
-  keys = function(o)
-    local ks = {}
-    for k in pairs(o) do ks[#ks + 1] = k end
-    return ks
-  end,
+  keys = function(o) return R.objectKeys(o) end,
 }
 
 js.Error = {
@@ -754,6 +756,219 @@ js.Array = {
     return setmetatable({ length = n or 0 }, JSArray)
   end,
 }
+
+-- ---------------------------------------------------------------------------
+-- JSON
+--
+-- JS objects are Lua tables, which cannot hold nil values and do not keep their keys in order.
+-- Objects created by JSON.parse remember their keys (in order, including the ones whose value is
+-- null) in `objectKeyOrder` (a list, plus a set in `objectKeySet`), which Object.keys and
+-- hasOwnProperty use.
+
+local objectKeyOrder = setmetatable({}, { __mode = "k" })
+local objectKeySet = setmetatable({}, { __mode = "k" })
+
+js.Object.prototype.hasOwnProperty = function(this, k)
+  if type(this) ~= "table" then return false end
+  if rawget(this, k) ~= nil then return true end
+  local set = objectKeySet[this]
+  return set ~= nil and set[k] == true
+end
+
+function R.objectKeys(o)
+  local keys = objectKeyOrder[o]
+  local result = { length = 0 }
+  if keys then
+    for i = 1, #keys do result[i - 1] = keys[i] end
+    result.length = #keys
+  elseif type(o) == "table" then
+    local sorted = {}
+    for k in pairs(o) do
+      if type(k) == "string" and not (getmetatable(o) == JSArray and k == "length") then sorted[#sorted + 1] = k end
+    end
+    table.sort(sorted)
+    for i = 1, #sorted do result[i - 1] = sorted[i] end
+    result.length = #sorted
+  end
+  return setmetatable(result, JSArray)
+end
+
+local jsonEscapes = { ['"'] = '"', ["\\"] = "\\", ["/"] = "/", b = "\b", f = "\f", n = "\n", r = "\r", t = "\t" }
+
+local function parseJSON(s)
+  local pos = 1
+  local function fail(message)
+    error("SyntaxError: JSON.parse: " .. message .. " at position " .. (pos - 1), 0)
+  end
+  local function skip()
+    pos = string.find(s, "[^ \t\r\n]", pos) or (#s + 1)
+  end
+  local parseValue
+
+  local function parseString()
+    pos = pos + 1 -- opening quote
+    local parts = {}
+    while true do
+      local j = string.find(s, '["\\]', pos)
+      if not j then fail("unterminated string") end
+      if j > pos then parts[#parts + 1] = strsub(s, pos, j - 1) end
+      pos = j
+      if strsub(s, j, j) == '"' then
+        pos = j + 1
+        return table.concat(parts)
+      end
+      local e = strsub(s, j + 1, j + 1)
+      if e == "u" then
+        local cp = tonumber(strsub(s, j + 2, j + 5), 16)
+        if not cp then fail("bad unicode escape") end
+        pos = j + 6
+        if cp >= 0xD800 and cp <= 0xDBFF and strsub(s, pos, pos + 1) == "\\u" then
+          local low = tonumber(strsub(s, pos + 2, pos + 5), 16)
+          if low and low >= 0xDC00 and low <= 0xDFFF then
+            cp = 0x10000 + (cp - 0xD800) * 0x400 + (low - 0xDC00)
+            pos = pos + 6
+          end
+        end
+        parts[#parts + 1] = utf8char(cp)
+      else
+        local c = jsonEscapes[e]
+        if not c then fail("bad escape") end
+        parts[#parts + 1] = c
+        pos = j + 2
+      end
+    end
+  end
+
+  local function parseNumber()
+    local text = string.match(s, "^-?%d+%.?%d*[eE]?[-+]?%d*", pos)
+    local n = text and tonumber(text)
+    if not n then fail("bad number") end
+    pos = pos + #text
+    return n
+  end
+
+  function parseValue()
+    skip()
+    local c = strsub(s, pos, pos)
+    if c == "{" then
+      pos = pos + 1
+      local o, keys, set = {}, {}, {}
+      skip()
+      if strsub(s, pos, pos) == "}" then
+        pos = pos + 1
+      else
+        while true do
+          skip()
+          if strsub(s, pos, pos) ~= '"' then fail("expected a string key") end
+          local k = parseString()
+          skip()
+          if strsub(s, pos, pos) ~= ":" then fail("expected ':'") end
+          pos = pos + 1
+          local v = parseValue()
+          if not set[k] then
+            set[k] = true
+            keys[#keys + 1] = k
+          end
+          o[k] = v
+          skip()
+          local d = strsub(s, pos, pos)
+          pos = pos + 1
+          if d == "}" then break elseif d ~= "," then fail("expected ',' or '}'") end
+        end
+      end
+      objectKeyOrder[o] = keys
+      objectKeySet[o] = set
+      return o
+    elseif c == "[" then
+      pos = pos + 1
+      local a = { length = 0 }
+      skip()
+      if strsub(s, pos, pos) == "]" then
+        pos = pos + 1
+      else
+        local n = 0
+        while true do
+          a[n] = parseValue()
+          n = n + 1
+          skip()
+          local d = strsub(s, pos, pos)
+          pos = pos + 1
+          if d == "]" then break elseif d ~= "," then fail("expected ',' or ']'") end
+        end
+        a.length = n
+      end
+      return setmetatable(a, JSArray)
+    elseif c == '"' then
+      return parseString()
+    elseif c == "-" or string.find(c, "%d") then
+      return parseNumber()
+    elseif strsub(s, pos, pos + 3) == "true" then
+      pos = pos + 4
+      return true
+    elseif strsub(s, pos, pos + 4) == "false" then
+      pos = pos + 5
+      return false
+    elseif strsub(s, pos, pos + 3) == "null" then
+      pos = pos + 4
+      return nil
+    end
+    fail("unexpected " .. (c == "" and "end of input" or ("'" .. c .. "'")))
+  end
+
+  local value = parseValue()
+  skip()
+  if pos <= #s then fail("unexpected trailing characters") end
+  return value
+end
+
+local function quoteJSON(str)
+  return '"' .. str:gsub('[%c"\\]', function(c)
+    if c == '"' then return '\\"' elseif c == "\\" then return "\\\\"
+    elseif c == "\n" then return "\\n" elseif c == "\r" then return "\\r" elseif c == "\t" then return "\\t"
+    else return strformat("\\u%04x", strbyte(c)) end
+  end) .. '"'
+end
+
+local function stringifyJSON(v)
+  local t = type(v)
+  if v == nil then return "null"
+  elseif t == "boolean" then return v and "true" or "false"
+  elseif t == "number" then
+    if v ~= v or v == huge or v == -huge then return "null" end
+    return R.numToStr(v)
+  elseif t == "string" then return quoteJSON(v)
+  elseif t == "table" then
+    if getmetatable(v) == JSArray then
+      local parts = {}
+      for i = 0, v.length - 1 do parts[#parts + 1] = stringifyJSON(v[i]) end
+      return "[" .. table.concat(parts, ",") .. "]"
+    end
+    local keys = R.objectKeys(v)
+    local parts = {}
+    for i = 0, keys.length - 1 do
+      local k = keys[i]
+      if v[k] ~= nil then parts[#parts + 1] = quoteJSON(k) .. ":" .. stringifyJSON(v[k]) end
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+  end
+  return "null"
+end
+
+js.JSON = {
+  parse = function(text) return parseJSON(text) end,
+  stringify = function(value) return stringifyJSON(value) end,
+}
+
+-- JS `instanceof`
+function R.jinstanceof(x, ctor)
+  if ctor == js.Array then return type(x) == "table" and getmetatable(x) == JSArray end
+  if ctor == js.Object then
+    local t = type(x)
+    return t == "table" or t == "userdata" or t == "function" or t == "cdata"
+  end
+  if type(ctor) == "table" and ctor.isInstance then return ctor.isInstance(x) end
+  return false
+end
 
 -- Methods of JS strings, numbers and functions (when called with a receiver)
 local JSString = {}

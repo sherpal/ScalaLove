@@ -258,18 +258,21 @@ final class Renderer(client: GameClient) {
         s"Target: $name (${math.round(t.life)} / ${math.round(t.maxLife)})"
       }
     Graphics.print(target, 10, 82)
+    Graphics.setColor(0.3, 0.3, 0.3)
+    Graphics.print(client.controlsInfo, 10, 100)
+    Graphics.setColor(0, 0, 0)
     val message =
       if (gameState.ended) (if (gameState.playersWon) "Victory!" else "Defeat...")
       else if (!gameState.started) "Waiting for the game to start..."
       else ""
-    if (message.nonEmpty) Graphics.printf(message, 0, 100, width, "center")
+    if (message.nonEmpty) Graphics.printf(message, 0, 120, width, "center")
     client.errorMessage.foreach { error =>
       Graphics.setColor(0.8, 0, 0)
-      Graphics.printf(error, 0, 130, width, "center")
+      Graphics.printf(error, 0, 140, width, "center")
     }
     if (client.choosingPosition.isDefined) {
       Graphics.setColor(0, 0, 0)
-      Graphics.printf("Click to place the zone (Escape to cancel)", 0, 150, width, "center")
+      Graphics.printf("Click to place the zone (Escape to cancel)", 0, 160, width, "center")
     }
   }
 }
