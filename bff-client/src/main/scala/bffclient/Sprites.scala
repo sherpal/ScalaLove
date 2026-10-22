@@ -52,6 +52,9 @@ object Sprites {
   lazy val livingDamageZone: Option[Sprite] =
     load("boss/dawn-of-time/boss102/living-damage-zone-animation.png", rows = 3, columns = 5)
 
+  /** On the target frame, when we face our target. */
+  lazy val smallLock: Option[Sprite] = load("misc/small-lock.png")
+
   /** The icons of the buffs, like the frontend's `Asset.buffAssetMap`, without the permanent buffs of
     * the classes (the square's shield, the resource fillers), which every player of the class has, and
     * without Boss 110's.

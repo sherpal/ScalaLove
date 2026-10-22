@@ -1,6 +1,6 @@
 package bffclient
 
-import bffclient.ui.Colour as Paint
+import bffclient.ui.{Colour as Paint, Rect}
 import gamelogic.buffs.Buff
 import gamelogic.entities.{Body, Entity, LivingEntity, WithPosition}
 import gamelogic.entities.WithPosition.Angle
@@ -88,18 +88,12 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
     line(pos, pos + Complex.polar(body.shape.radius, rotation(body)), 2, Paint(colour._1, colour._2, colour._3))
   }
 
+  /** Above the entity, in the [[HudStyle]]. */
   def lifeBar(entity: LivingEntity & Body): Unit = {
     val radius = entity.shape.radius
     val (x, y) = toScreen(position(entity) + Complex.i * (radius + 10))
-    val ratio  = math.max(0.0, math.min(1.0, entity.life / entity.maxLife))
-    Graphics.setColor(1, 1, 1)
-    Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius, 5)
-    if (ratio > 0.5) Graphics.setColor(0, 0.8, 0)
-    else if (ratio > 0.2) Graphics.setColor(1, 0.6, 0)
-    else Graphics.setColor(0.9, 0, 0)
-    Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius * ratio, 5)
-    Graphics.setColor(0, 0, 0)
-    Graphics.rectangle("line", x - radius, y - 2.5, 2 * radius, 5)
+    val ratio  = HudStyle.ratio(entity.life, entity.maxLife)
+    HudStyle.bar(Rect(x - radius, y - 3, 2 * radius, 6), ratio, HudStyle.lifeColour(ratio))
   }
 
   /** The buffs of the entity that have an icon, the oldest first (like the frontend's buff containers). */
@@ -131,15 +125,12 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
     }
   }
 
+  /** Below the entity, in the colour of the ability, in the [[HudStyle]]. */
   def castingBar(entity: Entity & Body): Unit =
     gameState.castingEntityInfo.get(entity.id).filter(_.isCasting(now, 0L)).foreach { info =>
       val radius   = entity.shape.radius
       val (x, y)   = toScreen(position(entity) - Complex.i * (radius + 10))
       val progress = (info.castingTime - info.remainingCastingTime(now, 0L)).toDouble / info.castingTime
-      val colour   = info.ability.abilityColour
-      Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0)
-      Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius * progress, 5)
-      Graphics.setColor(0, 0, 0)
-      Graphics.rectangle("line", x - radius, y - 2.5, 2 * radius, 5)
+      HudStyle.bar(Rect(x - radius, y - 3, 2 * radius, 6), progress, HudStyle.softened(info.ability.abilityColour))
     }
 }

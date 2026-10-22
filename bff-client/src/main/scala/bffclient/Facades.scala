@@ -85,6 +85,9 @@ object Graphics extends js.Object {
   def setColor(r: Double, g: Double, b: Double, a: Double = 1.0): Unit                = js.native
   def setLineWidth(width: Double): Unit                                               = js.native
   def rectangle(mode: String, x: Double, y: Double, width: Double, height: Double): Unit = js.native
+  /** With rounded corners (radii rx, ry). */
+  def rectangle(mode: String, x: Double, y: Double, width: Double, height: Double, rx: Double, ry: Double): Unit =
+    js.native
   def circle(mode: String, x: Double, y: Double, radius: Double): Unit                = js.native
   def line(x1: Double, y1: Double, x2: Double, y2: Double): Unit                      = js.native
   /** `coords` are x1, y1, x2, y2, ... (filled polygons must be convex). */
