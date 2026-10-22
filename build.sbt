@@ -26,6 +26,9 @@ def luaProject(p: Project): Project = p
       val mainCls = (Compile / mainClass).value.getOrElse(sys.error("No main class"))
       Def.task {
         (linker / Compile / runMain).toTask(s" scalalove.linker.Main $mainCls ${out.getAbsolutePath} $cp").value
+        // Lua modules of the project (src/main/lua) are copied next to main.lua
+        val luaSources = (Compile / sourceDirectory).value / "lua"
+        if (luaSources.exists()) IO.copyDirectory(luaSources, out, overwrite = true)
         out
       }
     }.value,
@@ -69,4 +72,11 @@ lazy val bffSimJVM = project.in(file("bff-sim/jvm"))
   .settings(
     libraryDependencies += "local.bff" %% "shared" % bffVersion,
     run / fork := true
+  )
+
+// Experiment: a headless LÖVE client connecting to a real Battle for Flatland game server
+lazy val bffClient = luaProject(project.in(file("bff-client")))
+  .settings(
+    scalaVersion := "3.9.0",
+    libraryDependencies += "local.bff" %%% "shared" % bffVersion
   )

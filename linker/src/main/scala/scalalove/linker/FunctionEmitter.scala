@@ -819,8 +819,16 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
   private def loadSpec(spec: Option[JSNativeLoadSpec], what: String): String = spec match {
     case Some(JSNativeLoadSpec.Global(ref, path)) =>
       (jsGlobal(ref) :: path).mkString(".")
-    case Some(JSNativeLoadSpec.ImportWithGlobalFallback(_, JSNativeLoadSpec.Global(ref, path))) =>
-      (jsGlobal(ref) :: path).mkString(".")
+    case Some(JSNativeLoadSpec.Import(module, path)) =>
+      // @JSImport("mod", JSImport.Namespace) or JSImport.Default is the module itself;
+      // @JSImport("mod", "x") is require("mod").x
+      val members = path match {
+        case "default" :: rest => rest
+        case _                 => path
+      }
+      (s"require(${luaString(module)})" :: members).mkString(".")
+    case Some(JSNativeLoadSpec.ImportWithGlobalFallback(importSpec, _)) =>
+      loadSpec(Some(importSpec), what)
     case _ =>
       s"""R.unsupported("JS module import for $what")"""
   }

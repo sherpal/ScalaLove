@@ -66,7 +66,7 @@ object Main {
 
     val config = StandardConfig()
       .withSemantics(LuaBackend.semantics)
-      .withESFeatures(LuaBackend.esFeatures)
+      .withESFeatures(LuaBackend.esFeatures).withModuleKind(ModuleKind.CommonJSModule)
       .withOptimizer(false)
       .withCheckIR(true)
     val frontend = StandardLinkerFrontend(config)

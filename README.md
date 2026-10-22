@@ -82,6 +82,33 @@ game's own `BFFPicklers`:
 * Encoding + decoding takes ≈0.16 ms per message in LuaJIT once warm
   (≈0.01 ms on the JVM).
 
+### Playing against the real game server
+
+`bff-client/` is a headless LÖVE client written in Scala that connects to an
+actual Battle for Flatland game server (BFF's `game-server.jar`, unchanged):
+
+* WebSocket: a small RFC 6455 client in Lua on top of LuaSocket (bundled with
+  LÖVE), `bff-client/src/main/lua/websocket.lua`, bound with
+  `@JSImport("websocket", JSImport.Namespace)` (compiled to `require("websocket")`).
+* It plays the frontend's start-of-game handshake (`Ready`, `ReadyToStart`,
+  `LetsBegin`), keeps a client-side game state with the game's own
+  `GreedyActionGatherer.slaveAddAndRemoveActions`, pings the server, and sends a
+  movement through the server.
+
+```bash
+# In BattleForFlatland: publish shared (see above), then
+sbt game-server/assembly
+# Here
+sbt bffClient/luaLink bffSimJVM/compile
+tools/bff-online-test.sh
+```
+
+The script starts the game server with a one-player Boss 101 game (the game
+info normally sent by the launcher is built by `bffsim.MakeGameInfo`), runs the
+client, and stops everything. Result: the handshake completes, the boss's AI
+kills our idle triangle in ~13 s (as seen from the client-side game state), our
+movement is applied and echoed by the server, and the ping round trip is 2-4 ms.
+
 ## How it works
 
 ```
@@ -130,6 +157,12 @@ Performance notes (LuaJIT):
   endlessly (10× slower on the Battle for Flatland experiment).
 * Lua allows 200 locals per function: huge methods (e.g. inlined Magnolia
   derivations) store their locals in a table instead.
+
+Lua modules: `@JSImport("mod", ...)` facades are compiled to `require("mod")`,
+and the `.lua` files of a project's `src/main/lua` are copied next to `main.lua`
+by `luaLink`. The runtime also exposes a `scalalove` global with
+`stringToBytes`/`bytesToString` to convert between Lua (binary) strings and
+Scala `Array[Byte]`.
 
 ### Calling LÖVE
 

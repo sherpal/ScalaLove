@@ -580,8 +580,11 @@ js.Error = {
   end,
 }
 
-js.performance = { now = function() return os.clock() * 1000 end }
-js.Date = { now = function() return os.time() * 1000 end }
+-- Wall clock: LuaSocket's (bundled with LÖVE) when available
+local hasSocket, luasocket = pcall(require, "socket")
+local wallClock = hasSocket and luasocket.gettime or os.time
+js.performance = { now = function() return wallClock() * 1000 end }
+js.Date = { now = function() return math.floor(wallClock() * 1000) end }
 
 js.Number = {
   isNaN = function(x) return x ~= x end,
@@ -893,6 +896,42 @@ function R.tuple(P, ctor, ...)
   -- A function that already returns a Scala tuple
   if select("#", ...) == 1 and type(first) == "table" and getmetatable(first) == P then return first end
   return P[ctor](P.__new(), ...)
+end
+
+-- Utilities available to Lua code and facades as the `scalalove` global
+scalalove = scalalove or {}
+
+-- Lua (binary) string -> Scala Array[Byte]
+function scalalove.stringToBytes(s)
+  local n = #s
+  local a = { length = n }
+  local i = 1
+  while i <= n do
+    local j = math.min(i + 4095, n)
+    local chunk = { strbyte(s, i, j) }
+    for k = 1, #chunk do
+      local b = chunk[k]
+      if b > 127 then b = b - 256 end
+      a[i + k - 2] = b
+    end
+    i = j + 1
+  end
+  return setmetatable(a, R.arrayType("B", 1, 0))
+end
+
+-- Scala Array[Byte] -> Lua (binary) string
+function scalalove.bytesToString(a)
+  local n = a.length
+  local parts = {}
+  local i = 0
+  while i < n do
+    local j = math.min(i + 4095, n - 1)
+    local chunk = {}
+    for k = i, j do chunk[k - i + 1] = band(a[k], 255) end
+    parts[#parts + 1] = strchar(unpack(chunk))
+    i = j + 1
+  end
+  return table.concat(parts)
 end
 
 function R.zor(a, b) return a or b end
