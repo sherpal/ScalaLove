@@ -114,6 +114,7 @@ final class Renderer(client: GameClient) {
       nose(boss, (0, 0, 0))
       lifeBar(boss)
       castingBar(boss)
+      buffIcons(boss)
     }
 
     // Sparks in the hands of a casting player, in the colour of the ability (like the frontend)
@@ -176,9 +177,9 @@ final class Renderer(client: GameClient) {
       val markerPosition = info match {
         case GameMarkerInfo.FixedGameMarker(_, gamePosition) => Some(gamePosition)
         case GameMarkerInfo.GameMarkerOnEntity(_, entityId) =>
-          // Above the buff icons of the players
+          // Above the buff icons (of the players and bosses)
           gameState.entities.get(entityId).collect { case b: Body =>
-            val aboveIcons = if (gameState.players.contains(entityId) && iconBuffs(entityId).nonEmpty) 20 else 0
+            val aboveIcons = if (iconBuffs(entityId).nonEmpty) 20 else 0
             position(b) + Complex.i * (b.shape.radius + 24 + aboveIcons)
           }
       }
