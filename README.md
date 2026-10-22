@@ -147,6 +147,15 @@ small steps are checked against the obstacles directly). Movements are sent
 when starting, stopping, turning or changing direction, and about 60 times per
 second while moving.
 
+The other entities (players, bosses, adds, projectiles) are extrapolated from
+the last movement received, so they jump when a turn or a stop arrives (one
+round trip late). Those jumps are smoothed when drawing (`Smoothing.scala`): a
+jump becomes an offset from the extrapolated position, which decays in about
+100 ms. Steady movements are not delayed, and jumps over 100 units (teleports)
+are shown as they are. The game logic keeps using the actual positions. With
+300 ms of simulated latency, the boss's largest jump between two frames goes
+from 59 units to 2.7 (headless runs report it).
+
 To try it with latency, `BFF_LAG_MS` simulates a round trip (half on each way),
 e.g. `BFF_LAG_MS=300 tools/bff-menu-test.sh --window`. Headless, the status
 lines show our predicted position next to the server's.

@@ -279,6 +279,23 @@ final class GameClient(
   private def project(): Unit =
     projectedState = gatherer.currentGameState.applyActions(predictedMovement.toVector)
 
+  /** Smoothed positions of the entities moved by the server, for drawing. */
+  val smoothing = new Smoothing
+
+  // Headless: the largest jumps of the boss between two frames, as extrapolated and as smoothed
+  private var previousBossPositions: Option[(Complex, Complex)] = None
+  private var largestBossJumps                                  = (0.0, 0.0)
+
+  private def measureBossJumps(): Unit =
+    for (boss <- gameState.bosses.values.headOption) {
+      val now     = serverNow
+      val current = (boss.currentPosition(now), smoothing.position(boss, now))
+      for ((raw, shown) <- previousBossPositions)
+        largestBossJumps = (math.max(largestBossJumps._1, (current._1 - raw).modulus),
+          math.max(largestBossJumps._2, (current._2 - shown).modulus))
+      previousBossPositions = Some(current)
+    }
+
   /** Estimate of the server's clock (from the ping/pong exchanges), used to interpolate positions.
     */
   def serverNow: Long = System.currentTimeMillis() + clockOffset
@@ -343,13 +360,16 @@ final class GameClient(
       else keyboardMovement(dt)
       project()
     }
+    smoothing.update(gameState, serverNow, dt, myId)
+    if (headless) measureBossJumps()
 
     if (headless && (gameState.ended || elapsed > 60 || !ws.isOpen())) {
       println(status)
       println(
         s"Finished: game ended=${gameState.ended}, players won=${gameState.playersWon}, " +
           s"socket open=${ws.isOpen()}, $messagesReceived messages ($bytesReceived bytes), $actionsReceived actions, " +
-          s"$castsSent casts sent"
+          s"$castsSent casts sent, largest boss jump between frames: " +
+          f"${largestBossJumps._1}%.1f (smoothed: ${largestBossJumps._2}%.1f)"
       )
       quit()
     }

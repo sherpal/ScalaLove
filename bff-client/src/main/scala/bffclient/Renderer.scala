@@ -1,7 +1,7 @@
 package bffclient
 
 import gamelogic.abilities.Ability
-import gamelogic.entities.{Body, Entity, LivingEntity, WithName}
+import gamelogic.entities.{Body, Entity, LivingEntity, WithName, WithPosition}
 import gamelogic.gameextras.GameMarkerInfo
 import gamelogic.entities.boss.BossEntity
 import gamelogic.entities.classes.PlayerClass
@@ -45,8 +45,11 @@ final class Renderer(client: GameClient) {
     // Camera: our player, or the boss once we are dead
     val me = client.myId.flatMap(gameState.players.get)
     cameraPosition = me.map(_.currentPosition(now))
-      .orElse(gameState.bosses.values.headOption.map(_.currentPosition(now)))
+      .orElse(gameState.bosses.values.headOption.map(position))
       .getOrElse(cameraPosition)
+
+    // Where to draw the entities: smoothed, except our (predicted) player
+    def position(entity: WithPosition): Complex = client.smoothing.position(entity, now)
 
     def toScreen(z: Complex): (Double, Double) = {
       val d = z - cameraPosition
@@ -57,7 +60,7 @@ final class Renderer(client: GameClient) {
       points.toSeq.flatMap { p => val (x, y) = toScreen(p); Seq(x, y) }
 
     def drawShape(body: Body, mode: String): Unit = {
-      val pos = body.currentPosition(now)
+      val pos = position(body)
       body.shape match {
         case circle: Circle =>
           val (x, y) = toScreen(pos)
@@ -77,7 +80,7 @@ final class Renderer(client: GameClient) {
     }
 
     def nose(body: Body, colour: (Double, Double, Double)): Unit = {
-      val pos     = body.currentPosition(now)
+      val pos     = position(body)
       val (x0, y0) = toScreen(pos)
       val (x1, y1) = toScreen(pos + Complex.polar(body.shape.radius, body.rotation))
       Graphics.setColor(colour._1, colour._2, colour._3)
@@ -88,7 +91,7 @@ final class Renderer(client: GameClient) {
 
     def lifeBar(entity: LivingEntity & Body): Unit = {
       val radius = entity.shape.radius
-      val (x, y) = toScreen(entity.currentPosition(now) + Complex.i * (radius + 10))
+      val (x, y) = toScreen(position(entity) + Complex.i * (radius + 10))
       val ratio  = math.max(0.0, math.min(1.0, entity.life / entity.maxLife))
       Graphics.setColor(1, 1, 1)
       Graphics.rectangle("fill", x - radius, y - 2.5, 2 * radius, 5)
@@ -103,7 +106,7 @@ final class Renderer(client: GameClient) {
     def castingBar(entity: Entity & Body): Unit =
       gameState.castingEntityInfo.get(entity.id).filter(_.isCasting(now, 0L)).foreach { info =>
         val radius   = entity.shape.radius
-        val (x, y)   = toScreen(entity.currentPosition(now) - Complex.i * (radius + 10))
+        val (x, y)   = toScreen(position(entity) - Complex.i * (radius + 10))
         val progress = (info.castingTime - info.remainingCastingTime(now, 0L)).toDouble / info.castingTime
         val colour   = info.ability.abilityColour
         Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0)
@@ -166,7 +169,7 @@ final class Renderer(client: GameClient) {
 
     // Target
     for (id <- client.currentTarget; case target: Body <- gameState.entities.get(id)) {
-      val (x, y) = toScreen(target.currentPosition(now))
+      val (x, y) = toScreen(position(target))
       if (client.lockInToTarget) Graphics.setColor(1, 0.3, 0) else Graphics.setColor(1, 0.85, 0)
       Graphics.setLineWidth(2)
       Graphics.circle("line", x, y, target.shape.radius + 6)
@@ -175,12 +178,12 @@ final class Renderer(client: GameClient) {
 
     // Game markers (put with the marker controls)
     for ((marker, info) <- gameState.markersInfo) {
-      val position = info match {
+      val markerPosition = info match {
         case GameMarkerInfo.FixedGameMarker(_, gamePosition) => Some(gamePosition)
         case GameMarkerInfo.GameMarkerOnEntity(_, entityId) =>
-          gameState.entities.get(entityId).collect { case b: Body => b.currentPosition(now) + Complex.i * (b.shape.radius + 24) }
+          gameState.entities.get(entityId).collect { case b: Body => position(b) + Complex.i * (b.shape.radius + 24) }
       }
-      position.foreach { p =>
+      markerPosition.foreach { p =>
         val (x, y) = toScreen(p)
         Graphics.setColor(0.1, 0.1, 0.6)
         Graphics.circle("fill", x, y, 9)
