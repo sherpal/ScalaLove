@@ -282,18 +282,24 @@ final class GameClient(
   /** Smoothed positions of the entities moved by the server, for drawing. */
   val smoothing = new Smoothing
 
-  // Headless: the largest jumps of the boss between two frames, as extrapolated and as smoothed
-  private var previousBossPositions: Option[(Complex, Complex)] = None
-  private var largestBossJumps                                  = (0.0, 0.0)
+  // Headless: the largest jumps and turns of the boss between two frames, actual and smoothed
+  private var previousBoss: Option[(Complex, Complex, Double, Double)] = None
+  private var largestBossJumps                                         = (0.0, 0.0)
+  private var largestBossTurns                                         = (0.0, 0.0)
 
   private def measureBossJumps(): Unit =
     for (boss <- gameState.bosses.values.headOption) {
       val now     = serverNow
-      val current = (boss.currentPosition(now), smoothing.position(boss, now))
-      for ((raw, shown) <- previousBossPositions)
+      val current = (boss.currentPosition(now), smoothing.position(boss, now), boss.rotation.value,
+        smoothing.rotation(boss).value)
+      for ((raw, shown, rawRotation, shownRotation) <- previousBoss) {
+        def turn(from: Double, to: Double) = math.abs(Smoothing.shortestAngle(to - from))
         largestBossJumps = (math.max(largestBossJumps._1, (current._1 - raw).modulus),
           math.max(largestBossJumps._2, (current._2 - shown).modulus))
-      previousBossPositions = Some(current)
+        largestBossTurns = (math.max(largestBossTurns._1, turn(rawRotation, current._3)),
+          math.max(largestBossTurns._2, turn(shownRotation, current._4)))
+      }
+      previousBoss = Some(current)
     }
 
   /** Estimate of the server's clock (from the ping/pong exchanges), used to interpolate positions.
@@ -369,7 +375,8 @@ final class GameClient(
         s"Finished: game ended=${gameState.ended}, players won=${gameState.playersWon}, " +
           s"socket open=${ws.isOpen()}, $messagesReceived messages ($bytesReceived bytes), $actionsReceived actions, " +
           s"$castsSent casts sent, largest boss jump between frames: " +
-          f"${largestBossJumps._1}%.1f (smoothed: ${largestBossJumps._2}%.1f)"
+          f"${largestBossJumps._1}%.1f (smoothed: ${largestBossJumps._2}%.1f), " +
+          f"largest boss turn between frames: ${largestBossTurns._1}%.2f rad (smoothed: ${largestBossTurns._2}%.2f)"
       )
       quit()
     }

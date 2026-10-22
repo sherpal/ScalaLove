@@ -2,6 +2,7 @@ package bffclient
 
 import gamelogic.abilities.Ability
 import gamelogic.entities.{Body, Entity, LivingEntity, WithName, WithPosition}
+import gamelogic.entities.WithPosition.Angle
 import gamelogic.gameextras.GameMarkerInfo
 import gamelogic.entities.boss.BossEntity
 import gamelogic.entities.classes.PlayerClass
@@ -50,6 +51,7 @@ final class Renderer(client: GameClient) {
 
     // Where to draw the entities: smoothed, except our (predicted) player
     def position(entity: WithPosition): Complex = client.smoothing.position(entity, now)
+    def rotation(body: Body): Angle               = client.smoothing.rotation(body)
 
     def toScreen(z: Complex): (Double, Double) = {
       val d = z - cameraPosition
@@ -69,11 +71,11 @@ final class Renderer(client: GameClient) {
           // Fill triangle by triangle, as obstacles can be concave
           for (t <- polygon.triangulation) {
             val corners = Seq(Complex(t.x0, t.y0), Complex(t.x1, t.y1), Complex(t.x2, t.y2))
-              .map(_.rotate(body.rotation) + pos)
+              .map(_.rotate(rotation(body)) + pos)
             Graphics.polygon("fill", polygonCoords(corners)*)
           }
         case polygon: Polygon =>
-          Graphics.polygon("line", polygonCoords(polygon.translateAndRotationVertices(pos, body.rotation))*)
+          Graphics.polygon("line", polygonCoords(polygon.translateAndRotationVertices(pos, rotation(body)))*)
         case _ =>
           ()
       }
@@ -82,7 +84,7 @@ final class Renderer(client: GameClient) {
     def nose(body: Body, colour: (Double, Double, Double)): Unit = {
       val pos     = position(body)
       val (x0, y0) = toScreen(pos)
-      val (x1, y1) = toScreen(pos + Complex.polar(body.shape.radius, body.rotation))
+      val (x1, y1) = toScreen(pos + Complex.polar(body.shape.radius, rotation(body)))
       Graphics.setColor(colour._1, colour._2, colour._3)
       Graphics.setLineWidth(2)
       Graphics.line(x0, y0, x1, y1)

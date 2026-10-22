@@ -152,9 +152,12 @@ the last movement received, so they jump when a turn or a stop arrives (one
 round trip late). Those jumps are smoothed when drawing (`Smoothing.scala`): a
 jump becomes an offset from the extrapolated position, which decays in about
 100 ms. Steady movements are not delayed, and jumps over 100 units (teleports)
-are shown as they are. The game logic keeps using the actual positions. With
-300 ms of simulated latency, the boss's largest jump between two frames goes
-from 59 units to 2.7 (headless runs report it).
+are shown as they are. Rotations are not extrapolated, so they snapped to each
+new value: the shown rotation now turns towards the actual one by the shortest
+way, in about 60 ms (this one delays turns a little). The game logic keeps
+using the actual positions and rotations. With 300 ms of simulated latency, the
+boss's largest jump between two frames goes from 53 units to 4, and its largest
+turn from 3.14 rad (a half turn) to 0.16 (headless runs report both).
 
 To try it with latency, `BFF_LAG_MS` simulates a round trip (half on each way),
 e.g. `BFF_LAG_MS=300 tools/bff-menu-test.sh --window`. Headless, the status
