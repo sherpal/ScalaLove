@@ -123,6 +123,8 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
       Graphics.setColor(0, 0, 0, 0.5)
       Graphics.rectangle("fill", left, top, size, size * buff.remainingPercentage(gameState.time))
     }
+    // A thin dark border, like the ability icons'
+    HudStyle.roundedLine(Rect(left - 1, top - 1, size + 2, size + 2), 2, Paint(0, 0, 0, 0.85), 1)
   }
 
   /** Below the entity, in the colour of the ability, in the [[HudStyle]]. */
