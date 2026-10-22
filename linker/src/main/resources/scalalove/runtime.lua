@@ -867,6 +867,15 @@ function R.truthy(x)
   return not (x == nil or x == false or x == 0 or x == "" or x ~= x)
 end
 
+-- Packs the values returned by a Lua function into a Scala tuple.
+-- `P` is the TupleN class table and `ctor` its constructor taking N values.
+function R.tuple(P, ctor, ...)
+  local first = ...
+  -- A function that already returns a Scala tuple
+  if select("#", ...) == 1 and type(first) == "table" and getmetatable(first) == P then return first end
+  return P[ctor](P.__new(), ...)
+end
+
 function R.zor(a, b) return a or b end
 function R.zand(a, b) return a and b end
 function R.void(_) return nil end

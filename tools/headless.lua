@@ -14,6 +14,7 @@ love = {
   graphics = setmetatable({
     getWidth = function() return 800 end,
     getHeight = function() return 600 end,
+    getDimensions = function() return 800, 600 end,
   }, { __index = function(_, k) return logger("graphics." .. k) end }),
   keyboard = { isDown = function(k) return down[k] == true end },
   event = { quit = logger("event.quit") },

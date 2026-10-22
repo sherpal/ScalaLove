@@ -90,7 +90,8 @@ final class Pong(width: Double, height: Double) {
 
 object Main {
   def main(args: Array[String]): Unit = {
-    val game = new Pong(Graphics.getWidth().toDouble, Graphics.getHeight().toDouble)
+    val screen = Graphics.getDimensions()
+    val game = new Pong(screen.width.toDouble, screen.height.toDouble)
     Love.update = dt => game.update(dt)
     Love.draw = () => game.draw()
     Love.keypressed = (key, _, _) => if (key == "escape") Event.quit()

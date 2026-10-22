@@ -65,14 +65,28 @@ object Main {
     val frontend = StandardLinkerFrontend(config)
     val logger = new ScalaConsoleLogger(Level.Warn)
 
-    val moduleSetFuture = for {
-      (containers, _) <- PathIRContainer.fromClasspath(classpath)
-      irFiles <- StandardImpl.irFileCache().newCache.cached(containers)
-      moduleSet <- frontend.link(irFiles,
-          Seq(ModuleInitializer.mainMethodWithArgs(mainClass, "main")),
-          LuaBackend.symbolRequirements, logger)
-    } yield moduleSet
-    val moduleSet = Await.result(moduleSetFuture, Duration.Inf)
+    val initializers = Seq(ModuleInitializer.mainMethodWithArgs(mainClass, "main"))
+    val irFiles = Await.result(
+        PathIRContainer.fromClasspath(classpath).flatMap((containers, _) =>
+            StandardImpl.irFileCache().newCache.cached(containers)),
+        Duration.Inf)
+
+    def link(extra: SymbolRequirement): ModuleSet =
+      Await.result(frontend.link(irFiles, initializers, LuaBackend.symbolRequirements ++ extra, logger), Duration.Inf)
+
+    // Multiple-return calls need the corresponding TupleN classes to be instantiable.
+    // We only know whether there are such calls after linking, so link again if necessary.
+    val firstModuleSet = link(SymbolRequirement.factory("lua-backend").none())
+    val arities = MultipleReturns.aritiesUsed(firstModuleSet)
+    val tuplesReady = arities.forall { n =>
+      firstModuleSet.modules.flatMap(_.classDefs).exists { c =>
+        c.className == MultipleReturns.tupleClass(n) && c.hasDirectInstances &&
+          c.methods.exists(_.methodName == MultipleReturns.tupleConstructor(n))
+      }
+    }
+    val moduleSet =
+      if (tuplesReady) firstModuleSet
+      else link(MultipleReturns.requirements(arities))
 
     val lua = new LuaEmitter(moduleSet).emit(LuaBackend.runtime, msg => System.err.println(msg))
 

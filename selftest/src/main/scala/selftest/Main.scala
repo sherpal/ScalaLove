@@ -137,6 +137,15 @@ object Main {
     same("isInstanceOf Char", xs.count(_.isInstanceOf[Char]), 1)
     same("isInstanceOf String", xs.count(_.isInstanceOf[String]), 1)
 
+    // Lua functions returning multiple values
+    same("multiple returns (2)", LuaString.find("hello", "ll"), (3, 4))
+    same("multiple returns destructuring", { val (i, f) = LuaMath.modf(3.5); i + f * 10 }, 8.0)
+    same("multiple returns (3)", LuaString.byte("abc", 1, 3), (97, 98, 99))
+    same("multiple returns (4)", LuaString.byte4("abcd", 1, 4), (97, 98, 99, 100))
+    same("multiple returns, fewer values", LuaString.findAny("abc", "z"), (null, null))
+    same("named tuple fields", { val r = LuaString.findNamed("hello", "ll"); r.end - r.start }, 1)
+    same("named tuple destructuring", { val (start = s, end = e) = LuaString.findNamed("hello", "ll"); s * 10 + e }, 34)
+
     println(s"$count checks, $failures failures")
     if (failures > 0) throw new AssertionError(s"$failures failures")
   }

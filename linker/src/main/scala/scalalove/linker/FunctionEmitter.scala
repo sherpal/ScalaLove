@@ -605,6 +605,12 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName) {
     case IsInstanceOf(e, testType) =>
       isInstanceOf(expr(e), testType)
 
+    case MultipleReturns(jsCall, arity) =>
+      // Pack all the values returned by the Lua function into a TupleN
+      val tuple = MultipleReturns.tupleClass(arity)
+      val ctor = Naming.methodName(MemberNamespace.Constructor, MultipleReturns.tupleConstructor(arity))
+      call("R.tuple", List(s"C.${Naming.className(tuple)}", s""""$ctor"""", expr(jsCall).code))
+
     case AsInstanceOf(e, tpe) if e.tpe == tpe =>
       expr(e)
 

@@ -33,8 +33,9 @@ Other tasks (available on every Lua project):
 | `luaTest`     | `luaLink`, then runs it headlessly with `luajit` (fake `love` table)|
 | `luaProbe`    | Prints the linked classes and IR node statistics (debugging)        |
 
-`sbt selftest/luaTest` runs a program checking ~60 language/library behaviours
-(Int/Long overflow, strings, case classes, enums, collections, exceptions, ...).
+`sbt selftest/luaTest` runs a program checking ~65 language/library behaviours
+(Int/Long overflow, strings, case classes, enums, collections, exceptions,
+multiple return values, ...).
 
 To take a screenshot from inside LÖVE (useful to check rendering from a script):
 
@@ -90,6 +91,22 @@ LÖVE is called through ordinary Scala.js facades (see `game/src/main/scala/love
   methods are called with a colon, `font:getWidth(...)`.
 * Scala functions assigned to `js.Function` fields become plain Lua functions,
   so `Love.update = dt => ...` is `love.update = function(dt) ... end`.
+* Lua functions returning several values are declared with a Scala tuple
+  (preferably a named tuple) as result type. All the returned values are packed
+  into the tuple (missing ones are `null`, i.e. `0` for numeric elements):
+
+  ```scala
+  @js.native @JSGlobal("love.graphics")
+  object Graphics extends js.Object {
+    def getDimensions(): (width: Int, height: Int) = js.native
+  }
+
+  val screen = Graphics.getDimensions()
+  screen.width                                   // by name
+  val (width, height) = Graphics.getDimensions() // or by position
+  ```
+
+  This works with any Lua function (e.g. `string.find`) and tuples up to `Tuple22`.
 
 The Scala.js standard library itself calls a few JavaScript built-ins
 (`Math.max`, `Object.prototype.hasOwnProperty`, JS arrays, string methods, ...);
@@ -103,7 +120,7 @@ the runtime emulates those in `R.js`.
   (`split(',')`, `split(", ")`); `replaceAll`, `matches`, `String.format`, ... don't.
 * Runtime checks are disabled (like Scala.js `fullLink`): no `ClassCastException`,
   `ArrayIndexOutOfBoundsException`, ... but `ArithmeticException` on `/ by zero` works.
-* Not supported yet: multiple Lua return values, JS classes defined in Scala,
+* Not supported yet: returning multiple values *from* Scala callbacks to Lua, JS classes defined in Scala,
   dynamic imports, reflection beyond `getClass.getName`.
 * LuaJIT only (LÖVE). Plain Lua 5.1 (World of Warcraft) needs `goto`-free control
   flow, a `Long` emulation (Scala.js' `RuntimeLong`) and a namespace table instead
