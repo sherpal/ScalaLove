@@ -6,7 +6,28 @@ import scala.scalajs.js.annotation.*
 /** The WebSocket client written in Lua (src/main/lua/websocket.lua). */
 @js.native @JSImport("websocket", JSImport.Namespace)
 object WebSocketModule extends js.Object {
-  def connect(url: String): (socket: WebSocket, error: String) = js.native
+  def connect(url: String): (socket: WebSocket, error: String)                                  = js.native
+  def connect(url: String, timeout: Double, cookie: String): (socket: WebSocket, error: String) = js.native
+}
+
+/** Non-blocking HTTP (src/main/lua/http.lua). */
+@js.native @JSImport("http", JSImport.Namespace)
+object HttpModule extends js.Object {
+  /** Returns the id of the request. */
+  def request(method: String, url: String, body: String, cookie: String): Int = js.native
+
+  /** The next response, or null. */
+  def poll(): HttpResponse = js.native
+}
+
+@js.native
+trait HttpResponse extends js.Object {
+  val id: Int           = js.native
+  /** 0 if the request failed (see `error`). */
+  val status: Int       = js.native
+  val body: String      = js.native
+  val setCookie: String = js.native
+  val error: String     = js.native
 }
 
 @js.native

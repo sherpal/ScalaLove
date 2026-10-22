@@ -268,60 +268,6 @@ function R.str(x)
   return tostring(x)
 end
 
--- If `regex` (a Java regex) only matches a literal string, returns that string.
-function R.regexLiteral(regex)
-  local out = {}
-  local i, n = 1, #regex
-  while i <= n do
-    local c = strsub(regex, i, i)
-    if c == "\\" then
-      local d = strsub(regex, i + 1, i + 1)
-      if d == "Q" then
-        local e = string.find(regex, "\\E", i + 2, true)
-        out[#out + 1] = strsub(regex, i + 2, (e or n + 1) - 1)
-        i = e and e + 2 or n + 1
-      elseif d == "t" then out[#out + 1] = "\t"; i = i + 2
-      elseif d == "n" then out[#out + 1] = "\n"; i = i + 2
-      elseif d:match("^[%w]$") then return nil
-      else out[#out + 1] = d; i = i + 2 end
-    elseif c:match("^[%^%$%.%|%?%*%+%(%)%[%]{}]$") then
-      return nil
-    else
-      out[#out + 1] = c
-      i = i + 1
-    end
-  end
-  return table.concat(out)
-end
-
--- java.lang.String.split, for regexes matching a literal string.
--- Returns a 0-based table of parts and its length.
-function R.split(s, regex, limit)
-  local sep = R.regexLiteral(regex)
-  if sep == nil then error("ScalaLove: String.split only supports literal separators for now: " .. regex, 2) end
-  local parts, n = {}, 0
-  if sep == "" then
-    for i = 1, #s do parts[n] = strsub(s, i, i); n = n + 1 end
-    if n == 0 then parts[0] = ""; n = 1 end
-  else
-    local start = 1
-    while limit <= 0 or n < limit - 1 do
-      local i, j = string.find(s, sep, start, true)
-      if not i then break end
-      parts[n] = strsub(s, start, i - 1)
-      n = n + 1
-      start = j + 1
-    end
-    parts[n] = strsub(s, start)
-    n = n + 1
-  end
-  if limit == 0 then
-    while n > 1 and parts[n - 1] == "" do parts[n - 1] = nil; n = n - 1 end
-    if n == 1 and parts[0] == "" and #s > 0 then parts[0] = nil; n = 0 end
-  end
-  return parts, n
-end
-
 -- ---------------------------------------------------------------------------
 -- Boxing / dispatch on hijacked classes
 
@@ -970,6 +916,601 @@ function R.jinstanceof(x, ctor)
   return false
 end
 
+-- ---------------------------------------------------------------------------
+-- Regular expressions: a backtracking engine for the JS RegExp syntax that the Scala.js
+-- library (java.util.regex.PatternCompiler) produces. Strings are byte strings, so classes
+-- and escapes are about bytes (code points above 255 never match).
+
+local regex = {}
+
+local function newSet() return {} end
+local function addRange(set, a, b) for c = math.max(a, 0), math.min(b, 255) do set[c] = true end end
+local function addSet(set, other) for c = 0, 255 do if other[c] then set[c] = true end end end
+local function negateSet(set) local n = {} for c = 0, 255 do n[c] = not set[c] end return n end
+
+local DIGIT, WORD, SPACE = newSet(), newSet(), newSet()
+addRange(DIGIT, 48, 57)
+addRange(WORD, 48, 57); addRange(WORD, 65, 90); addRange(WORD, 97, 122); WORD[95] = true
+for _, c in ipairs({ 9, 10, 11, 12, 13, 32, 160 }) do SPACE[c] = true end
+
+local function caseFold(set)
+  for c = 65, 90 do if set[c] or set[c + 32] then set[c] = true; set[c + 32] = true end end
+  return set
+end
+
+-- Parser: pattern string -> AST
+local function parseRegex(src, flags)
+  local pos, n = 1, #src
+  local groupCount, names = 0, {}
+  local icase = flags.i
+
+  local function peek(k) return strsub(src, pos + (k or 0), pos + (k or 0)) end
+  local function fail(msg) error("SyntaxError: Invalid regular expression: /" .. src .. "/: " .. msg, 0) end
+
+  local function hexAt(at, len)
+    local h = strsub(src, at, at + len - 1)
+    if #h == len and h:match("^%x+$") then return tonumber(h, 16) end
+    return nil
+  end
+
+  -- An escape after '\' (pos on the escaped char). Returns a set (classes) or a code.
+  local function parseEscape(inClass)
+    local c = peek()
+    pos = pos + 1
+    if c == "d" then return DIGIT elseif c == "D" then return negateSet(DIGIT)
+    elseif c == "w" then return WORD elseif c == "W" then return negateSet(WORD)
+    elseif c == "s" then return SPACE elseif c == "S" then return negateSet(SPACE)
+    elseif c == "n" then return 10 elseif c == "r" then return 13 elseif c == "t" then return 9
+    elseif c == "f" then return 12 elseif c == "v" then return 11 elseif c == "0" then return 0
+    elseif c == "b" and inClass then return 8
+    elseif c == "x" then local v = hexAt(pos, 2); if v then pos = pos + 2; return v end; return 120
+    elseif c == "u" then
+      if peek() == "{" then
+        local close = string.find(src, "}", pos, true)
+        local v = close and tonumber(strsub(src, pos + 1, close - 1), 16)
+        if v then pos = close + 1; return v end
+      end
+      local v = hexAt(pos, 4); if v then pos = pos + 4; return v end; return 117
+    elseif c == "c" then local l = strbyte(src, pos); pos = pos + 1; return band(l or 0, 31)
+    end
+    return strbyte(c)
+  end
+
+  local function parseClass()
+    -- pos after '['
+    local negated = false
+    if peek() == "^" then negated = true; pos = pos + 1 end
+    local set = newSet()
+    local first = true
+    while true do
+      local c = peek()
+      if c == "" then fail("unterminated character class") end
+      if c == "]" and not (first and false) then pos = pos + 1; break end
+      first = false
+      local lo
+      if c == "\\" then
+        pos = pos + 1
+        local e = parseEscape(true)
+        if type(e) == "table" then addSet(set, e) else lo = e end
+      else
+        lo = strbyte(c); pos = pos + 1
+      end
+      if lo then
+        if peek() == "-" and peek(1) ~= "]" and peek(1) ~= "" then
+          pos = pos + 1
+          local hc = peek()
+          local hi
+          if hc == "\\" then
+            pos = pos + 1
+            local e = parseEscape(true)
+            if type(e) == "table" then addSet(set, e); set[lo] = true; set[45] = true; hi = nil else hi = e end
+          else
+            hi = strbyte(hc); pos = pos + 1
+          end
+          if hi then
+            if hi < lo then fail("range out of order") end
+            addRange(set, lo, hi)
+          end
+        else
+          if lo <= 255 then set[lo] = true end
+        end
+      end
+    end
+    if icase then caseFold(set) end
+    return { type = "set", set = negated and negateSet(set) or set }
+  end
+
+  local parseAlternation
+
+  local function parseAtom()
+    local c = peek()
+    if c == "(" then
+      pos = pos + 1
+      local node
+      if peek() == "?" then
+        local k = peek(1)
+        if k == ":" then pos = pos + 2; node = { type = "group", node = parseAlternation() }
+        elseif k == "=" or k == "!" then
+          pos = pos + 2; node = { type = "look", behind = false, negative = (k == "!"), node = parseAlternation() }
+        elseif k == "<" and (peek(2) == "=" or peek(2) == "!") then
+          local negative = peek(2) == "!"
+          pos = pos + 3; node = { type = "look", behind = true, negative = negative, node = parseAlternation() }
+        elseif k == "<" then
+          local close = string.find(src, ">", pos, true) or fail("bad group name")
+          local name = strsub(src, pos + 2, close - 1)
+          pos = close + 1
+          groupCount = groupCount + 1
+          local index = groupCount
+          names[name] = index
+          node = { type = "capture", index = index, name = name, node = parseAlternation() }
+        else fail("invalid group") end
+      else
+        groupCount = groupCount + 1
+        local index = groupCount
+        node = { type = "capture", index = index, node = parseAlternation() }
+      end
+      if peek() ~= ")" then fail("unterminated group") end
+      pos = pos + 1
+      return node
+    elseif c == "[" then pos = pos + 1; return parseClass()
+    elseif c == "." then pos = pos + 1; return { type = "any" }
+    elseif c == "^" then pos = pos + 1; return { type = "bol" }
+    elseif c == "$" then pos = pos + 1; return { type = "eol" }
+    elseif c == "\\" then
+      pos = pos + 1
+      local e = peek()
+      if e == "b" then pos = pos + 1; return { type = "wordb", negative = false } end
+      if e == "B" then pos = pos + 1; return { type = "wordb", negative = true } end
+      if e:match("%d") and e ~= "0" then
+        local digits = string.match(src, "^%d+", pos)
+        pos = pos + #digits
+        return { type = "backref", index = tonumber(digits) }
+      end
+      if e == "k" and peek(1) == "<" then
+        local close = string.find(src, ">", pos, true) or fail("bad group name")
+        local name = strsub(src, pos + 2, close - 1)
+        pos = close + 1
+        return { type = "backref", name = name }
+      end
+      local v = parseEscape(false)
+      if type(v) == "table" then return { type = "set", set = v } end
+      if icase and ((v >= 65 and v <= 90) or (v >= 97 and v <= 122)) then
+        local set = newSet(); set[v] = true; return { type = "set", set = caseFold(set) }
+      end
+      return { type = "char", code = v }
+    end
+    pos = pos + 1
+    local code = strbyte(c)
+    if icase and ((code >= 65 and code <= 90) or (code >= 97 and code <= 122)) then
+      local set = newSet(); set[code] = true; return { type = "set", set = caseFold(set) }
+    end
+    return { type = "char", code = code }
+  end
+
+  local function parseQuantified()
+    local atom = parseAtom()
+    while true do
+      local c = peek()
+      local min, max
+      if c == "*" then min, max = 0, huge; pos = pos + 1
+      elseif c == "+" then min, max = 1, huge; pos = pos + 1
+      elseif c == "?" then min, max = 0, 1; pos = pos + 1
+      elseif c == "{" then
+        local a, b, close = string.match(src, "^{(%d+)(,?%d*)}()", pos)
+        if not a then break end
+        min = tonumber(a)
+        if b == "" then max = min elseif b == "," then max = huge else max = tonumber(strsub(b, 2)) end
+        pos = close
+      else break end
+      local greedy = true
+      if peek() == "?" then greedy = false; pos = pos + 1 end
+      atom = { type = "repeat", node = atom, min = min, max = max, greedy = greedy }
+    end
+    return atom
+  end
+
+  local function parseSequence()
+    local items = {}
+    while true do
+      local c = peek()
+      if c == "" or c == "|" or c == ")" then break end
+      items[#items + 1] = parseQuantified()
+    end
+    return { type = "seq", items = items }
+  end
+
+  function parseAlternation()
+    local alternatives = { parseSequence() }
+    while peek() == "|" do
+      pos = pos + 1
+      alternatives[#alternatives + 1] = parseSequence()
+    end
+    if #alternatives == 1 then return alternatives[1] end
+    return { type = "alt", alternatives = alternatives }
+  end
+
+  local ast = parseAlternation()
+  if pos <= n then fail("unmatched ')'") end
+  return ast, groupCount, names
+end
+
+-- Compiler: AST -> matcher function(i, k) over the state `st` (str, len, caps).
+-- `k(j)` is the continuation; matchers return the final end index, or nil.
+local function compileRegex(ast, flags, st, names)
+  local multiline, dotAll, icase = flags.m, flags.s, flags.i
+
+  local function isWordAt(i) local b = strbyte(st.str, i); return b ~= nil and WORD[b] == true end
+
+  local compile
+
+  local function singleByte(node)
+    -- Returns a predicate on bytes if the node always matches exactly one byte
+    if node.type == "char" then local c = node.code; return function(b) return b == c end
+    elseif node.type == "set" then local set = node.set; return function(b) return set[b] == true end
+    elseif node.type == "any" then
+      if dotAll then return function(b) return true end end
+      return function(b) return b ~= 10 and b ~= 13 end
+    end
+    return nil
+  end
+
+  function compile(node)
+    local t = node.type
+    if t == "char" then
+      local c = node.code
+      return function(i, k) if strbyte(st.str, i) == c then return k(i + 1) end return nil end
+    elseif t == "set" or t == "any" then
+      local p = singleByte(node)
+      return function(i, k) local b = strbyte(st.str, i); if b and p(b) then return k(i + 1) end return nil end
+    elseif t == "seq" then
+      local fs = {}
+      for idx, item in ipairs(node.items) do fs[idx] = compile(item) end
+      local count = #fs
+      if count == 0 then return function(i, k) return k(i) end end
+      if count == 1 then return fs[1] end
+      local function run(idx, i, k)
+        if idx > count then return k(i) end
+        local f = fs[idx]
+        return f(i, function(j) return run(idx + 1, j, k) end)
+      end
+      return function(i, k) return run(1, i, k) end
+    elseif t == "alt" then
+      local fs = {}
+      for idx, a in ipairs(node.alternatives) do fs[idx] = compile(a) end
+      return function(i, k)
+        for idx = 1, #fs do
+          local r = fs[idx](i, k)
+          if r then return r end
+        end
+        return nil
+      end
+    elseif t == "group" then
+      return compile(node.node)
+    elseif t == "capture" then
+      local inner, s, e = compile(node.node), 2 * node.index - 1, 2 * node.index
+      return function(i, k)
+        return inner(i, function(j)
+          local caps = st.caps
+          local ps, pe = caps[s], caps[e]
+          caps[s], caps[e] = i, j
+          local r = k(j)
+          if not r then caps[s], caps[e] = ps, pe end
+          return r
+        end)
+      end
+    elseif t == "backref" then
+      return function(i, k)
+        local index = node.index or names[node.name]
+        local caps = st.caps
+        local s, e = caps[2 * index - 1], caps[2 * index]
+        if not s then return k(i) end
+        local sub = strsub(st.str, s, e - 1)
+        local here = strsub(st.str, i, i + #sub - 1)
+        if here == sub or (icase and here:lower() == sub:lower()) then return k(i + #sub) end
+        return nil
+      end
+    elseif t == "look" then
+      local inner = compile(node.node)
+      if not node.behind then
+        return function(i, k)
+          local r = inner(i, function(j) return j end)
+          if node.negative then if r then return nil end return k(i) end
+          if r then return k(i) end
+          return nil
+        end
+      end
+      return function(i, k)
+        local found = false
+        for j = i, 1, -1 do
+          if inner(j, function(e) if e == i then return e end return nil end) then found = true; break end
+        end
+        if found ~= node.negative then return k(i) end
+        return nil
+      end
+    elseif t == "bol" then
+      return function(i, k)
+        if i == 1 or (multiline and (strbyte(st.str, i - 1) == 10 or strbyte(st.str, i - 1) == 13)) then return k(i) end
+        return nil
+      end
+    elseif t == "eol" then
+      return function(i, k)
+        if i == st.len + 1 or (multiline and (strbyte(st.str, i) == 10 or strbyte(st.str, i) == 13)) then return k(i) end
+        return nil
+      end
+    elseif t == "wordb" then
+      return function(i, k)
+        local atBoundary = isWordAt(i - 1) ~= isWordAt(i)
+        if atBoundary ~= node.negative then return k(i) end
+        return nil
+      end
+    elseif t == "repeat" then
+      local min, max, greedy = node.min, node.max, node.greedy
+      local p = singleByte(node.node)
+      if p then
+        -- Fast path for repeated single bytes: no recursion per iteration
+        return function(i, k)
+          local str, j, count = st.str, i, 0
+          while count < max do
+            local b = strbyte(str, j)
+            if not b or not p(b) then break end
+            j = j + 1; count = count + 1
+          end
+          if count < min then return nil end
+          if greedy then
+            for c = count, min, -1 do
+              local r = k(i + c)
+              if r then return r end
+            end
+          else
+            for c = min, count do
+              local r = k(i + c)
+              if r then return r end
+            end
+          end
+          return nil
+        end
+      end
+      local inner = compile(node.node)
+      local function rep(i, k, count)
+        if count < min then
+          return inner(i, function(j) return rep(j, k, count + 1) end)
+        end
+        if greedy then
+          if count < max then
+            local r = inner(i, function(j) if j == i then return nil end return rep(j, k, count + 1) end)
+            if r then return r end
+          end
+          return k(i)
+        end
+        local r = k(i)
+        if r then return r end
+        if count < max then
+          return inner(i, function(j) if j == i then return nil end return rep(j, k, count + 1) end)
+        end
+        return nil
+      end
+      return function(i, k) return rep(i, k, 0) end
+    end
+    error("regex: unknown node " .. tostring(t))
+  end
+
+  return compile(ast)
+end
+
+local RegExp = { __name = "RegExp" }
+RegExp.__index = RegExp
+R.RegExp = RegExp
+
+local supportedFlags = { g = "global", i = "ignoreCase", m = "multiline", s = "dotAll", y = "sticky" }
+
+local function newRegExp(source, flags)
+  if type(source) == "table" and getmetatable(source) == RegExp then
+    if flags == nil then flags = source.flags end
+    source = source.source
+  end
+  source = source == nil and "(?:)" or R.str(source)
+  flags = flags or ""
+  local f = {}
+  for c in flags:gmatch(".") do
+    if not supportedFlags[c] then error("SyntaxError: Invalid regular expression flags '" .. flags .. "'", 0) end
+    f[c] = true
+  end
+  local ast, groupCount, names = parseRegex(source, f)
+  local st = { str = "", len = 0, caps = {} }
+  local re = setmetatable({
+    source = source, flags = flags, lastIndex = 0,
+    global = f.g == true, ignoreCase = f.i == true, multiline = f.m == true,
+    dotAll = f.s == true, sticky = f.y == true, unicode = false,
+  }, RegExp)
+  rawset(re, "_matcher", compileRegex(ast, f, st, names))
+  rawset(re, "_state", st)
+  rawset(re, "_groupCount", groupCount)
+  rawset(re, "_names", names)
+  return re
+end
+
+-- Finds a match from the 0-based index `from`; returns 1-based start, end (exclusive) and captures
+local function regexFind(re, str, from, stickyOnly)
+  local st, matcher = re._state, re._matcher
+  st.str, st.len = str, #str
+  local function done(j) return j end
+  local last = stickyOnly and from + 1 or #str + 1
+  for start = from + 1, last do
+    st.caps = {}
+    local e = matcher(start, done)
+    if e then return start, e, st.caps end
+  end
+  return nil
+end
+
+function RegExp.exec(re, str)
+  str = R.str(str)
+  local useLast = re.global or re.sticky
+  local from = useLast and re.lastIndex or 0
+  if from > #str then
+    re.lastIndex = 0
+    return nil
+  end
+  local s, e, caps = regexFind(re, str, from, re.sticky)
+  if not s then
+    if useLast then re.lastIndex = 0 end
+    return nil
+  end
+  if useLast then re.lastIndex = e - 1 end
+  local result = { length = re._groupCount + 1 }
+  result[0] = strsub(str, s, e - 1)
+  for g = 1, re._groupCount do
+    local cs, ce = caps[2 * g - 1], caps[2 * g]
+    if cs then result[g] = strsub(str, cs, ce - 1) end
+  end
+  result.index = s - 1
+  result.input = str
+  if next(re._names) then
+    local groups = {}
+    for name, g in pairs(re._names) do groups[name] = result[g] end
+    result.groups = groups
+  end
+  return setmetatable(result, JSArray)
+end
+
+function RegExp.test(re, str) return RegExp.exec(re, str) ~= nil end
+function RegExp.toString(re) return "/" .. re.source .. "/" .. re.flags end
+
+js.RegExp = {
+  new = newRegExp,
+  isInstance = function(x) return type(x) == "table" and getmetatable(x) == RegExp end,
+}
+
+-- The replacement of a match, with JS's $ patterns or a function
+local function substitution(replacement, match)
+  if type(replacement) == "function" then
+    local args = {}
+    for g = 0, match.length - 1 do args[#args + 1] = match[g] end
+    return R.str(replacement(unpack(args, 1, match.length)))
+  end
+  replacement = R.str(replacement)
+  return (replacement:gsub("%$([%$&`'0-9<])([0-9]?)", function(c, d)
+    if c == "$" then return "$" .. d
+    elseif c == "&" then return match[0] .. d
+    elseif c == "`" then return strsub(match.input, 1, match.index) .. d
+    elseif c == "'" then return strsub(match.input, match.index + #match[0] + 1) .. d
+    elseif c == "<" then return "$<" .. d
+    end
+    local two = tonumber(c .. d)
+    if d ~= "" and two and two < match.length then return match[two] or "" end
+    local one = tonumber(c)
+    if one and one > 0 and one < match.length then return (match[one] or "") .. d end
+    return "$" .. c .. d
+  end))
+end
+
+local function regexReplace(s, re, replacement)
+  local parts, last = {}, 1
+  local global = re.global
+  local saved = re.lastIndex
+  re.lastIndex = 0
+  local from = 0
+  while from <= #s do
+    local ms, me, caps = regexFind(re, s, from, re.sticky)
+    if not ms then break end
+    local match = { length = re._groupCount + 1, index = ms - 1, input = s }
+    match[0] = strsub(s, ms, me - 1)
+    for g = 1, re._groupCount do
+      if caps[2 * g - 1] then match[g] = strsub(s, caps[2 * g - 1], caps[2 * g] - 1) end
+    end
+    parts[#parts + 1] = strsub(s, last, ms - 1)
+    parts[#parts + 1] = substitution(replacement, match)
+    last = me
+    if not global then break end
+    from = (me > ms) and (me - 1) or me
+  end
+  parts[#parts + 1] = strsub(s, last)
+  re.lastIndex = global and 0 or saved
+  return table.concat(parts)
+end
+
+-- ---------------------------------------------------------------------------
+-- Event loop: setTimeout/setInterval/queueMicrotask. Scala.js' global ExecutionContext (and so
+-- Futures) schedules its tasks with setTimeout(task, 0).
+--
+-- scalalove.runTimers() runs the tasks that are due. In LÖVE, it runs automatically at the start
+-- of every frame: `love.update` is wrapped (see the end of this file).
+
+local immediate = {}   -- FIFO of tasks with no delay (zero-delay timeouts, microtasks)
+local delayed = {}     -- timers with a due time (in seconds)
+local cancelled = {}
+local lastTimerId = 0
+
+local function newTimerId() lastTimerId = lastTimerId + 1; return lastTimerId end
+
+local function schedule(fn, delay, args, interval)
+  local id = newTimerId()
+  delay = tonumber(delay) or 0
+  if delay <= 0 and not interval then
+    immediate[#immediate + 1] = { id = id, fn = fn, args = args }
+  else
+    delayed[#delayed + 1] = { id = id, fn = fn, args = args, due = wallClock() + math.max(delay, 1) / 1000,
+      interval = interval and math.max(delay, 1) / 1000 or nil }
+  end
+  return id
+end
+
+js.setTimeout = function(fn, delay, ...) return schedule(fn, delay, { ... }, false) end
+js.setInterval = function(fn, delay, ...) return schedule(fn, delay, { ... }, true) end
+js.clearTimeout = function(id) if id ~= nil then cancelled[id] = true end end
+js.clearInterval = js.clearTimeout
+js.queueMicrotask = function(fn) immediate[#immediate + 1] = { id = newTimerId(), fn = fn, args = {} } end
+
+local function runTask(task)
+  if cancelled[task.id] then return end
+  local ok, err = xpcall(function() task.fn(unpack(task.args)) end, debug.traceback)
+  if not ok then io.stderr:write("Uncaught error in a timer: ", tostring(err), "\n") end
+end
+
+scalalove = scalalove or {}
+
+function scalalove.pendingTimers()
+  local n = #immediate
+  for i = 1, #delayed do if not cancelled[delayed[i].id] then n = n + 1 end end
+  return n
+end
+
+function scalalove.runTimers()
+  local deadline = wallClock()
+  local budget = 100000
+  local function runImmediate()
+    while #immediate > 0 and budget > 0 do
+      local queue = immediate
+      immediate = {}
+      for i = 1, #queue do runTask(queue[i]); budget = budget - 1 end
+    end
+  end
+  runImmediate()
+  -- Timers due at the start of this run, in due order (intervals run at most once per run)
+  local due = {}
+  local remaining = {}
+  for i = 1, #delayed do
+    local t = delayed[i]
+    if cancelled[t.id] then
+      -- dropped
+    elseif t.due <= deadline then due[#due + 1] = t
+    else remaining[#remaining + 1] = t end
+  end
+  delayed = remaining
+  table.sort(due, function(a, b) if a.due ~= b.due then return a.due < b.due end return a.id < b.id end)
+  for i = 1, #due do
+    local t = due[i]
+    if not cancelled[t.id] then
+      runTask(t)
+      if t.interval and not cancelled[t.id] then
+        t.due = math.max(t.due + t.interval, deadline + 0.0001)
+        delayed[#delayed + 1] = t
+      end
+    end
+    runImmediate()
+  end
+end
+
 -- Methods of JS strings, numbers and functions (when called with a receiver)
 local JSString = {}
 local JSNumber = {}
@@ -1026,6 +1567,70 @@ function JSString.startsWith(s, p, pos) pos = pos or 0; return strsub(s, pos + 1
 function JSString.endsWith(s, p) return p == "" or strsub(s, -#p) == p end
 function JSString.includes(s, p) return string.find(s, p, 1, true) ~= nil end
 function JSString.concat(s, ...) return s .. table.concat({ ... }) end
+function JSString.replace(s, pattern, replacement)
+  if type(pattern) == "table" and getmetatable(pattern) == RegExp then return regexReplace(s, pattern, replacement) end
+  pattern = R.str(pattern)
+  local i, j = string.find(s, pattern, 1, true)
+  if not i then return s end
+  local match = { [0] = pattern, length = 1, index = i - 1, input = s }
+  return strsub(s, 1, i - 1) .. substitution(replacement, match) .. strsub(s, j + 1)
+end
+function JSString.split(s, sep, limit)
+  local parts = { length = 0 }
+  local function add(p) if limit == nil or parts.length < limit then parts[parts.length] = p; parts.length = parts.length + 1 end end
+  if sep == nil then add(s)
+  elseif type(sep) == "table" and getmetatable(sep) == RegExp then
+    if #s == 0 then
+      if not regexFind(sep, s, 0, false) then add(s) end
+    else
+      local last, from = 1, 1
+      while from <= #s do
+        local ms, me = regexFind(sep, s, from - 1, false)
+        if not ms or ms > #s then break end
+        if me == ms then
+          -- Empty match: split between bytes, but not at the start of the current piece
+          if ms > last then add(strsub(s, last, ms - 1)); last = ms end
+          from = ms + 1
+        else
+          add(strsub(s, last, ms - 1)); last = me; from = me
+        end
+      end
+      add(strsub(s, last))
+    end
+  else
+    sep = R.str(sep)
+    if sep == "" then for i = 1, #s do add(strsub(s, i, i)) end
+    else
+      local start = 1
+      while true do
+        local i, j = string.find(s, sep, start, true)
+        if not i then break end
+        add(strsub(s, start, i - 1)); start = j + 1
+      end
+      add(strsub(s, start))
+    end
+  end
+  return setmetatable(parts, JSArray)
+end
+function JSString.match(s, re)
+  if not (type(re) == "table" and getmetatable(re) == RegExp) then re = newRegExp(re) end
+  if not re.global then return RegExp.exec(re, s) end
+  local all = { length = 0 }
+  re.lastIndex = 0
+  while true do
+    local m = RegExp.exec(re, s)
+    if not m then break end
+    all[all.length] = m[0]; all.length = all.length + 1
+    if #m[0] == 0 then re.lastIndex = re.lastIndex + 1 end
+  end
+  if all.length == 0 then return nil end
+  return setmetatable(all, JSArray)
+end
+function JSString.search(s, re)
+  if not (type(re) == "table" and getmetatable(re) == RegExp) then re = newRegExp(re) end
+  local ms = regexFind(re, s, 0, false)
+  return ms and (ms - 1) or -1
+end
 function JSString.toString(s) return s end
 function JSString.valueOf(s) return s end
 function JSString.localeCompare(a, b) if a < b then return -1 elseif a > b then return 1 end return 0 end
@@ -1195,6 +1800,27 @@ function R.classIsAssignableFrom(a, b)
   if a == b or a.__desc == "java.lang.Object" then return true end
   local P = classesByName[b.__desc]
   return P ~= nil and P.__anc[a.__desc] == true
+end
+
+-- In LÖVE, run the timers at the start of every frame, whatever the game sets as love.update
+if type(love) == "table" and getmetatable(love) == nil then
+  local userUpdate = rawget(love, "update")
+  rawset(love, "update", nil)
+  setmetatable(love, {
+    __index = function(_, k)
+      if k == "update" then
+        local f = userUpdate
+        return function(...)
+          scalalove.runTimers()
+          if f then return f(...) end
+        end
+      end
+      return nil
+    end,
+    __newindex = function(t, k, v)
+      if k == "update" then userUpdate = v else rawset(t, k, v) end
+    end,
+  })
 end
 
 return R

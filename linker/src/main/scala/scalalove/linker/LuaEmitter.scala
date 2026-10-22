@@ -84,21 +84,6 @@ final class LuaEmitter(moduleSet: ModuleSet) {
     case _                   => "class"
   }
 
-  /** Hand-written Lua implementations of some library methods. Given parameter names, returns the body. */
-  private lazy val overrides: Map[(ClassName, MethodName), List[String] => String] = {
-    val stringArray = ArrayTypeRef(ClassRef(BoxedStringClass), 1)
-    def split(limit: String => String): List[String] => String = { params =>
-      s"  local parts, n = R.split(this, ${params.head}, ${limit(params.last)})\n" +
-        s"  return R.arrayOf(AT[${g.arrayTypeIndex(stringArray)}], parts, n)"
-    }
-    Map(
-      (BoxedStringClass, MethodName("split", List(ClassRef(BoxedStringClass)), stringArray)) ->
-        split(_ => "0"),
-      (BoxedStringClass, MethodName("split", List(ClassRef(BoxedStringClass), IntRef), stringArray)) ->
-        split(identity)
-    )
-  }
-
   def emit(runtime: String, logger: String => Unit): String = {
     val sb = new StringBuilder
     def ln(s: String = ""): Unit = sb.append(s).append('\n')
@@ -151,13 +136,7 @@ final class LuaEmitter(moduleSet: ModuleSet) {
         val ns = m.flags.namespace
         val name = s"${cls(c.className)}.${Naming.methodName(ns, m.methodName)}"
         val thisParam = if (ns.isStatic) None else Some("this")
-        val overridden = overrides.get((c.className, m.methodName))
-        if (overridden.isDefined) {
-          val params = (thisParam.toList ++ m.args.map(a => Naming.sanitize(a.name.name.nameString))).mkString(", ")
-          ln(s"function $name($params)")
-          ln(overridden.get(m.args.map(a => Naming.sanitize(a.name.name.nameString))))
-          ln("end")
-        } else try {
+        try {
           def emitWith(spill: Boolean): (String, FunctionEmitter) = {
             val fe = new FunctionEmitter(g, c.className, spill)
             val code = fe.emitMethod(name, thisParam, m.args, m.resultType, body,

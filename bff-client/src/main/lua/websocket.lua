@@ -1,6 +1,6 @@
 -- Minimal WebSocket client (RFC 6455) on top of LuaSocket, for LÖVE.
 --
---   local ws, err = websocket.connect("ws://localhost:8080/path?query")
+--   local ws, err = websocket.connect("ws://localhost:8080/path?query"[, timeout[, cookie]])
 --   ws:send(binaryString)      -- binary frame
 --   ws:sendText(text)          -- text frame
 --   local message = ws:poll()  -- next received message (string) or nil; never blocks
@@ -63,7 +63,7 @@ local function frame(opcode, payload)
   return concat(parts)
 end
 
-function M.connect(url, timeout)
+function M.connect(url, timeout, cookie)
   local host, port, path = url:match("^ws://([^:/]+):?(%d*)(.*)$")
   if not host then return nil, "invalid websocket url: " .. tostring(url) end
   port = tonumber(port) or 80
@@ -82,8 +82,8 @@ function M.connect(url, timeout)
     "Connection: Upgrade",
     "Sec-WebSocket-Key: " .. base64(randomBytes(16)),
     "Sec-WebSocket-Version: 13",
-    "", "",
-  }, "\r\n"))
+    (cookie and cookie ~= "") and ("Cookie: " .. cookie) or nil,
+  }, "\r\n") .. "\r\n\r\n")
 
   local status = tcp:receive("*l")
   if not status or not status:match("^HTTP/1%.1 101") then

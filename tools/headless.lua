@@ -20,6 +20,9 @@ love = {
   event = { quit = logger("event.quit") },
 }
 dofile(dir .. "/main.lua")
+-- Run the pending timers (Futures, setTimeout, ...) for at most 5 seconds
+local started = os.time()
+while scalalove and scalalove.pendingTimers() > 0 and os.time() - started < 5 do scalalove.runTimers() end
 if frames > 0 then
   down["w"] = true
   for _ = 1, frames do

@@ -33,9 +33,10 @@ Other tasks (available on every Lua project):
 | `luaTest`     | `luaLink`, then runs it headlessly with `luajit` (fake `love` table)|
 | `luaProbe`    | Prints the linked classes and IR node statistics (debugging)        |
 
-`sbt selftest/luaTest` runs a program checking ~70 language/library behaviours
+`sbt selftest/luaTest` runs a program checking ~85 language/library behaviours
 (Int/Long overflow, strings, case classes, enums, collections, exceptions,
-multiple return values, JSON with circe, ...).
+multiple return values, JSON with circe, regular expressions, `String.format`,
+futures and timers, ...).
 
 To take screenshots from inside LÖVE (useful to check rendering from a script),
 optionally simulating held keys:
@@ -133,6 +134,30 @@ the server. Result: the handshake completes, the boss's AI
 kills our idle triangle in ~13 s (as seen from the client-side game state), our
 movement is applied and echoed by the server, and the ping round trip is 2-4 ms.
 
+### Through the menu server
+
+With `BFF_MENU_URL`, the client first goes through BFF's menu server, over HTTP
+and the lobby websocket, like the browser frontend: it logs in (session
+cookie), creates a game, picks its class and gets ready, chooses the boss,
+starts the game, receives the game server credentials on the lobby websocket,
+then connects to the game server and plays (`bff-client/.../MenuSession.scala`,
+using the game's own request/response types and circe codecs).
+
+HTTP requests run on a LÖVE thread (`http.lua`, `http_worker.lua`, LuaSocket),
+so the game loop never blocks. `HttpClient` returns `Future`s, and the whole menu
+flow is a for-comprehension.
+
+```bash
+tools/bff-menu-test.sh            # headless
+tools/bff-menu-test.sh --window
+```
+
+The script runs the menu server (from a temporary directory, where it keeps its
+JSON files) and the game server launcher from their sbt classpaths, then stops
+everything. Note that BFF's game servers keep running after their game and
+always use port 22222, so a second game needs the first game server to be
+stopped (the script does it).
+
 ## How it works
 
 ```
@@ -182,6 +207,12 @@ Performance notes (LuaJIT):
 * Lua allows 200 locals per function: huge methods (e.g. inlined Magnolia
   derivations) store their locals in a table instead.
 
+Futures and timers: the runtime emulates the JS event loop (`setTimeout`,
+`setInterval`, `queueMicrotask`), which Scala.js' global `ExecutionContext` uses.
+In LÖVE, the pending tasks run at the start of every frame (`love.update` is
+wrapped), so `Future`s and `js.timers` work as in the browser; elsewhere, call
+`scalalove.runTimers()`.
+
 Lua modules: `@JSImport("mod", ...)` facades are compiled to `require("mod")`,
 and the `.lua` files of a project's `src/main/lua` are copied next to `main.lua`
 by `luaLink`. The runtime also exposes a `scalalove` global with
@@ -221,14 +252,16 @@ library pick its pure Scala fallbacks over newer JS built-ins (e.g. heap
 
 The Scala.js standard library itself calls a few JavaScript built-ins
 (`Math.max`, `Object.prototype.hasOwnProperty`, JS arrays, string methods,
-`JSON.parse`/`JSON.stringify`, `instanceof`, ...); the runtime emulates those in `R.js`.
+`JSON.parse`/`JSON.stringify`, `instanceof`, `RegExp`, ...); the runtime emulates those in
+`R.js`. Regular expressions use a small backtracking engine for the JS syntax that the Scala.js
+regex compiler produces (`java.util.regex`, `String.format`, `split`, `replaceAll`, ...).
 
 ## Known limitations
 
 * **Strings are byte strings**: `length`/`charAt` count bytes, not UTF-16 units.
   ASCII text behaves exactly like on the JVM; string literals are encoded in UTF-8.
-* **No regular expressions**: `String.split` works for literal separators only
-  (`split(',')`, `split(", ")`); `replaceAll`, `matches`, `String.format`, ... don't.
+* **Regular expressions** work on bytes: classes like `\w` or `[a-z]` are about
+  ASCII, and characters outside Latin-1 never match.
 * Runtime checks are disabled (like Scala.js `fullLink`): no `ClassCastException`,
   `ArrayIndexOutOfBoundsException`, ... but `ArithmeticException` on `/ by zero` works.
 * Not supported yet: returning multiple values *from* Scala callbacks to Lua, JS classes defined in Scala,

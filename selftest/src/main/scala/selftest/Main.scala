@@ -168,7 +168,37 @@ object Main {
     same("json decode case class", decode[JsonPoint]("""{"x": 3, "label": null, "tags": ["a", "b"]}"""),
       Right(JsonPoint(3, None, List("a", "b"))))
 
-    println(s"$count checks, $failures failures")
-    if (failures > 0) throw new AssertionError(s"$failures failures")
+    // Regular expressions (java.util.regex compiles to JS RegExps, emulated by the runtime)
+    same("regex replaceAll", "a1b22c333".replaceAll("[0-9]+", "#"), "a#b#c#")
+    same("regex matches", "2026-10-22".matches("\\d{4}-\\d{2}-\\d{2}"), true)
+    same("regex no match", "2026-1-22".matches("\\d{4}-\\d{2}-\\d{2}"), false)
+    same("regex split", "a, b,c".split(",\\s*").toList, List("a", "b", "c"))
+    same("regex groups", """(\w+)@(\w+)\.com""".r.findFirstMatchIn("mail: bob@example.com").map(m => m.group(1) + "/" + m.group(2)),
+      Some("bob/example"))
+    same("regex findAllIn", "x1y22z333".split("[a-z]").filter(_.nonEmpty).toList, List("1", "22", "333"))
+    same("regex case insensitive", "Hello".replaceAll("(?i)h", "J"), "Jello")
+    same("regex replacement groups", "x1y2".replaceAll("(\\d)", "<$1>"), "x<1>y<2>")
+    same("regex lazy", "<a><b>".replaceAll("<.*?>", "_"), "__")
+    same("regex lookahead", "price: 10 EUR, 20 USD".replaceAll("\\d+(?= EUR)", "N"), "price: N EUR, 20 USD")
+    same("String.format", String.format("%d|%5s|%-3s|%x", Int.box(42), "ab", "c", Int.box(255)), "42|   ab|c  |ff")
+    same("f interpolator", f"${3.14159}%.2f and ${7}%03d", "3.14 and 007")
+    same("pattern match on regex", "v1.22" match { case s"v$major.$minor" => (major, minor); case _ => ("", "") }, ("1", "22"))
+
+    // Futures on the global ExecutionContext, and timers (the runtime emulates the JS event loop)
+    import scala.concurrent.{Future, Promise}
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val delayed = Promise[Int]()
+    scala.scalajs.js.timers.setTimeout(10)(delayed.success(20))
+    val result = for {
+      a <- Future(1)
+      b <- delayed.future
+      c <- Future(a + b).map(_ * 2)
+    } yield c
+    result.onComplete { r =>
+      same("futures and timers", r, scala.util.Success(42))
+      println(s"$count checks, $failures failures")
+      // Lua's os.exit, so that luaTest fails
+      if (failures > 0) scala.scalajs.js.Dynamic.global.os.exit(1)
+    }
   }
 }

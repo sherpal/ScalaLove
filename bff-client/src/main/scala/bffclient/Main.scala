@@ -2,6 +2,9 @@ package bffclient
 
 import java.nio.ByteBuffer
 
+import scala.concurrent.ExecutionContext
+import scala.util.{Failure, Success}
+
 import boopickle.Default.*
 import communication.BFFPicklers.*
 import gamelogic.abilities.Ability
@@ -13,6 +16,7 @@ import gamelogic.gamestate.{ActionGatherer, GameAction, GameState, GreedyActionG
 import gamelogic.gamestate.gameactions.MovingBodyMoves
 import gamelogic.physics.Complex
 import models.bff.ingame.{Controls, InGameWSProtocol, UserInput}
+import models.bff.outofgame.PlayerClasses
 import models.bff.ingame.InGameWSProtocol.*
 
 /** Connects to a real Battle for Flatland game server, plays the start-of-game handshake like the
@@ -22,12 +26,45 @@ import models.bff.ingame.InGameWSProtocol.*
   * With BFF_HEADLESS set, there is no window: the client walks a bit, logs, and quits at the end.
   */
 object Main {
+  given ExecutionContext = ExecutionContext.global
+
+  private def env(name: String, default: String): String = Option(Os.getenv(name)).getOrElse(default)
+
+  /** With BFF_MENU_URL (e.g. http://127.0.0.1:9000), goes through the menu server first. Otherwise,
+    * connects directly to a game server (BFF_HOST, BFF_PORT, BFF_SECRET, BFF_GAME_ID).
+    */
   def main(args: Array[String]): Unit = {
-    def env(name: String, default: String): String = Option(Os.getenv(name)).getOrElse(default)
-    val user                                       = env("BFF_USER", "alice")
-    val headless                                   = Os.getenv("BFF_HEADLESS") != null
-    val url = s"ws://${env("BFF_HOST", "localhost")}:${env("BFF_PORT", "22223")}/ws/connect" +
-      s"?userName=$user&secret=${env("BFF_SECRET", "secret")}&gameId=${env("BFF_GAME_ID", "game")}"
+    val user     = env("BFF_USER", "alice")
+    val headless = Os.getenv("BFF_HEADLESS") != null
+    Option(Os.getenv("BFF_MENU_URL")) match {
+      case Some(menuUrl) =>
+        val (host, port) = menuUrl.stripPrefix("http://").split(":") match {
+          case Array(h, p) => (h, p.toInt)
+          case Array(h)    => (h, 80)
+          case _           => sys.error(s"Invalid BFF_MENU_URL $menuUrl")
+        }
+        val playerClass = PlayerClasses.playerClassByName(env("BFF_CLASS", "Triangle")).getOrElse(PlayerClasses.Triangle)
+        val menu        = new MenuSession(host, port, user, playerClass, env("BFF_BOSS", "Boss 101"))
+        if (!headless) Love.draw = () => MenuScreen.draw(menu.log)
+        menu.run().onComplete {
+          case Success(access) => startGame(access, headless)
+          case Failure(error) =>
+            menu.info(s"ERROR: ${error.getMessage}")
+            if (headless) Event.quit(1)
+        }
+      case None =>
+        startGame(
+          GameAccess(env("BFF_HOST", "localhost"), env("BFF_PORT", "22223").toInt, user,
+            env("BFF_GAME_ID", "game"), env("BFF_SECRET", "secret")),
+          headless
+        )
+    }
+  }
+
+  /** Connects to the game server and runs the game. */
+  def startGame(access: GameAccess, headless: Boolean): Unit = {
+    val url = s"ws://${access.host}:${access.port}/ws/connect" +
+      s"?userName=${access.userName}&secret=${access.secret}&gameId=${access.gameId}"
     println(s"Connecting to $url")
     val connection = WebSocketModule.connect(url)
     if (connection.socket == null) {
@@ -38,11 +75,11 @@ object Main {
       val (controls, controlsInfo) = ControlsFile.load()
       println(controlsInfo)
       if headless then {
-        val client = new GameClient(connection.socket, user, headless, controls, controlsInfo, () => Complex.zero)
+        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => Complex.zero)
         Love.update = dt => client.update(dt)
       } else {
         var renderer: Renderer = null
-        val client = new GameClient(connection.socket, user, headless, controls, controlsInfo, () => renderer.mouseWorld)
+        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => renderer.mouseWorld)
         renderer = new Renderer(client)
         Love.update = dt => client.update(dt)
         Love.draw = () => renderer.draw()
@@ -52,6 +89,16 @@ object Main {
           if (button == 1) client.clicked(renderer.toWorld(x, y))
       }
     }
+  }
+}
+
+/** While in the menus: what the menu session did so far. */
+object MenuScreen {
+  def draw(log: collection.Seq[String]): Unit = {
+    Graphics.setBackgroundColor(0.15, 0.15, 0.2)
+    Graphics.setColor(1, 1, 1)
+    Graphics.print("Battle for Flatland - menus (via the menu server)", 20, 20)
+    for ((line, i) <- log.takeRight(30).zipWithIndex) Graphics.print(line, 20, 50 + 18 * i)
   }
 }
 

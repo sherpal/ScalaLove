@@ -1175,7 +1175,8 @@ object FunctionEmitter {
     "BigInt", "Reflect", "Proxy", "console", "performance", "globalThis", "RegExp",
     "TypeError", "RangeError", "Promise", "Map", "Set", "WeakMap", "Int8Array",
     "Int16Array", "Int32Array", "Uint8Array", "Uint16Array", "Float32Array",
-    "Float64Array", "ArrayBuffer", "DataView", "BigInt64Array", "setTimeout", "queueMicrotask"
+    "Float64Array", "ArrayBuffer", "DataView", "BigInt64Array", "setTimeout", "clearTimeout",
+    "setInterval", "clearInterval", "queueMicrotask"
   )
 
   /** Lua string literal. Non-ASCII chars are encoded in UTF-8. */
