@@ -10,7 +10,7 @@ final class Refresh[A](app: MenuApp, load: () => Future[A])(onLoaded: A => Unit)
   private var again   = false
 
   def apply(): Unit =
-    if (loading) again = true
+    if loading then again = true
     else {
       loading = true
       app.attempt(load())(
@@ -21,6 +21,6 @@ final class Refresh[A](app: MenuApp, load: () => Future[A])(onLoaded: A => Unit)
 
   private def done(): Unit = {
     loading = false
-    if (again) { again = false; apply() }
+    if again then { again = false; apply() }
   }
 }

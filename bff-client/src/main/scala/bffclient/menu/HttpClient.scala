@@ -30,7 +30,7 @@ final class HttpClient(baseUrl: String)(using ExecutionContext) {
   private def poll(): Unit = {
     var response = HttpModule.poll()
     while response != null do {
-      if (response.setCookie != null && response.setCookie.nonEmpty)
+      if response.setCookie != null && response.setCookie.nonEmpty then
         cookie = response.setCookie.takeWhile(_ != ';')
       pending.remove(response.id).foreach(_.success(response))
       response = HttpModule.poll()
@@ -44,10 +44,10 @@ final class HttpClient(baseUrl: String)(using ExecutionContext) {
   private def request(method: String, path: String, body: String): Future[String] = {
     val promise = Promise[HttpResponse]()
     pending(HttpModule.request(method, baseUrl + path, body, cookie)) = promise
-    if (poller.isEmpty) poller = Some(js.timers.setInterval(1)(poll()))
+    if poller.isEmpty then poller = Some(js.timers.setInterval(1)(poll()))
     promise.future.flatMap { response =>
-      if (response.status == 200) Future.successful(response.body)
-      else if (response.status == 0)
+      if response.status == 200 then Future.successful(response.body)
+      else if response.status == 0 then
         Future.failed(HttpError(s"$method $path failed: ${response.error}"))
       else Future.failed(HttpError(s"$method $path: HTTP ${response.status} ${response.body}"))
     }

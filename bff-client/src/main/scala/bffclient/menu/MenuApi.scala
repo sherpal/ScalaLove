@@ -19,11 +19,11 @@ final class MenuApi(val host: String, val port: Int)(using ExecutionContext) {
   def sessionCookie: String = http.sessionCookie
 
   /** Logs in (the menu server only asks for a name) and returns the logged in user. */
-  def login(name: String): Future[User] = for {
+  def login(name: String): Future[User] = for
     _    <- http.post("/api/users/login", User(name))
     me   <- me
     user <- me.fold(Future.failed(HttpError(s"Login as $name failed")))(Future.successful)
-  } yield user
+  yield user
 
   def me: Future[Option[User]] = http.get[Option[User]]("/api/users/me")
 
@@ -89,7 +89,7 @@ final class MenuApi(val host: String, val port: Int)(using ExecutionContext) {
     val query      = gameId.fold("")(id => s"?gameId=$id")
     val connection =
       WebSocketModule.connect(s"ws://$host:$port/ws/bff/game-anti-chamber$query", 5, sessionCookie)
-    if (connection.socket == null) Future.failed(HttpError(s"Lobby websocket: ${connection.error}"))
+    if connection.socket == null then Future.failed(HttpError(s"Lobby websocket: ${connection.error}"))
     else Future.successful(new Lobby(connection.socket, onMessage))
   }
 }
@@ -102,7 +102,7 @@ object MenuApi {
     */
   def parseAddress(address: String): Either[String, (String, Int)] = {
     val trimmed = address.trim.stripPrefix("http://").stripSuffix("/")
-    if (address.trim.startsWith("https://")) Left("https is not supported, use http://")
+    if address.trim.startsWith("https://") then Left("https is not supported, use http://")
     else
       trimmed.split(":") match {
         case Array(host) if host.nonEmpty => Right((host, defaultPort))
@@ -123,7 +123,7 @@ final class Lobby(ws: WebSocket, onMessage: MenuGameComm => Unit) {
 
   def isOpen: Boolean = !closed && ws.isOpen()
 
-  def close(): Unit = if (!closed) {
+  def close(): Unit = if !closed then {
     closed = true
     js.timers.clearInterval(poller)
     ws.close()
@@ -131,7 +131,7 @@ final class Lobby(ws: WebSocket, onMessage: MenuGameComm => Unit) {
 
   private def poll(): Unit = {
     var data = ws.poll()
-    while (data != null && !closed) {
+    while data != null && !closed do {
       decode[MenuGameComm](data) match {
         case Right(message) => onMessage(message)
         case Left(error) => println(s"[lobby] Unknown message $data: $error")

@@ -140,12 +140,12 @@ final class MenuApp(val server: Option[String], startGame: (GameAccess, GameExit
   }
 
   private def drawNotification(): Unit = notification.foreach { (message, isError, until) =>
-    if (Timer.getTime() > until) notification = None
+    if Timer.getTime() > until then notification = None
     else {
       val (width, height) = size
       val textWidth       = ui.textWidth(message)
       val rect            = Rect((width - textWidth) / 2 - 20, height - 110, textWidth + 40, 40)
-      ui.fill(rect, if (isError) Theme.negative else Theme.positive)
+      ui.fill(rect, if isError then Theme.negative else Theme.positive)
       ui.textIn(message, rect)
     }
   }

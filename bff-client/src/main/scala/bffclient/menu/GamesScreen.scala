@@ -18,7 +18,7 @@ final class GamesScreen(app: MenuApp, user: User)(using ExecutionContext) extend
   private def received(all: Vector[MenuGameWithPlayers]): Unit = {
     games = Some(all.filterNot(_.started))
     // Names are unique, and started games (not shown) keep theirs
-    if (newGameName.text.startsWith(defaultName)) {
+    if newGameName.text.startsWith(defaultName) then {
       val taken = all.map(_.game.gameName).toSet
       newGameName.text =
         (Iterator.single(defaultName) ++ Iterator.from(2).map(i => s"$defaultName $i"))
@@ -54,36 +54,36 @@ final class GamesScreen(app: MenuApp, user: User)(using ExecutionContext) extend
           Rect(strip.x + 16, strip.y, strip.width, strip.height),
           align = "left"
         )
-        if (
+        if
           ui.button(
             "Join it back",
             Rect(strip.right - 150, strip.y + 7, 140, 36),
             !busy,
             ButtonStyle.Primary
           )
-        )
+        then
           enter(game.id)
       case None if games.isDefined =>
         val entered =
           ui.textField(newGameName, Rect(40, 105, 320, 40), "Game name", enabled = !busy)
-        if (
+        if
           (ui.button(
             "Create game",
             Rect(370, 105, 150, 40),
             !busy,
             ButtonStyle.Primary
           ) || entered) && !busy
-        )
+        then
           create()
       case None => ()
     }
 
-    if (ui.button("Controls", Rect(width - 170, 105, 130, 40))) app.showControls()
+    if ui.button("Controls", Rect(width - 170, 105, 130, 40)) then app.showControls()
 
     val table   = Rect(40, 180, width - 80, height - 220)
     val columns = Seq("Name" -> 0.0, "Created by" -> 0.4, "Players" -> 0.65)
     ui.panel(table)
-    for ((title, at) <- columns)
+    for (title, at) <- columns do
       ui.text(title, table.x + 16 + at * table.width, table.y + 12, colour = Theme.muted)
     games match {
       case None => ui.loading("Loading the games", table.x + 16, table.y + 50)
@@ -95,12 +95,12 @@ final class GamesScreen(app: MenuApp, user: User)(using ExecutionContext) extend
         )
       case Some(all) =>
         val rowsThatFit = ((table.height - 50) / 44).toInt
-        for ((game, i) <- all.take(rowsThatFit).zipWithIndex) {
+        for (game, i) <- all.take(rowsThatFit).zipWithIndex do {
           val row = Rect(table.x + 1, table.y + 44 + 44 * i, table.width - 2, 44)
-          if (i % 2 == 0) ui.fill(row, Theme.background.withAlpha(0.35))
+          if i % 2 == 0 then ui.fill(row, Theme.background.withAlpha(0.35))
           val cells =
             Seq(game.game.gameName, game.game.gameCreator.name, game.players.length.toString)
-          for ((cell, (_, at)) <- cells.zip(columns))
+          for (cell, (_, at)) <- cells.zip(columns) do
             ui.textIn(
               cell,
               Rect(table.x + 16 + at * table.width, row.y, table.width * 0.25, row.height),
@@ -108,16 +108,16 @@ final class GamesScreen(app: MenuApp, user: User)(using ExecutionContext) extend
             )
           // Like the frontend: one may join any game, unless already in one (which may then be joined back)
           val canJoin = gameYouAreIn.forall(_.id == game.id)
-          if (
+          if
             canJoin && ui.button(
-              if (gameYouAreIn.isDefined) "Join back" else "Join",
+              if gameYouAreIn.isDefined then "Join back" else "Join",
               Rect(row.right - 130, row.y + 5, 115, 34),
               !busy
             )
-          )
-            if (gameYouAreIn.isDefined) enter(game.id) else join(game.id)
+          then
+            if gameYouAreIn.isDefined then enter(game.id) else join(game.id)
         }
-        if (all.size > rowsThatFit)
+        if all.size > rowsThatFit then
           ui.text(
             s"... and ${all.size - rowsThatFit} more",
             table.x + 16,

@@ -69,12 +69,12 @@ final class Effects {
   ): Unit = {
     val now = Timer.getTime()
     effects.filterInPlace(effect => now - effect.start < effect.duration)
-    for (action <- actions) {
+    for action <- actions do {
       val newEffects =
         gameState.applyActionChangers(action).flatMap(effectOf(_, gameState, myId, now))
-      if (newEffects.nonEmpty && seen.add(action.id)) {
+      if newEffects.nonEmpty && seen.add(action.id) then {
         seenOrder.enqueue(action.id)
-        if (seenOrder.size > 1000) seen.remove(seenOrder.dequeue())
+        if seenOrder.size > 1000 then seen.remove(seenOrder.dequeue())
         effects ++= newEffects
       }
     }
@@ -138,10 +138,10 @@ final class Effects {
           )
         }
       case UseAbility(_, _, casterId, _, hit: DirectHit) =>
-        for {
+        for
           caster <- gameState.players.get(casterId)
           case target: Body <- gameState.entities.get(hit.targetId)
-        } yield DirectHitSwing(casterId, (target.pos - caster.pos).arg, now)
+        yield DirectHitSwing(casterId, (target.pos - caster.pos).arg, now)
       case _ =>
         None
     }
@@ -152,11 +152,11 @@ final class Effects {
     val now          = Timer.getTime()
     val previousFont = Graphics.getFont()
     Graphics.setFont(font)
-    for (effect <- effects) {
+    for effect <- effects do {
       val t = now - effect.start
-      if (t >= 0 && t < effect.duration) effect match {
+      if t >= 0 && t < effect.duration then effect match {
         case FloatingText(text, (r, g, b), entityId, offset, velocity, _) =>
-          for (p <- position(entityId)) {
+          for p <- position(entityId) do {
             val (x, y) = toScreen(p + offset + velocity * t)
             val alpha  =
               math.min(1.0, 4 * (effect.duration - t)) // fades out in the last quarter second
@@ -186,7 +186,7 @@ final class Effects {
               Graphics.polygon("fill", corners.flatMap((cx, cy) => Seq(cx, cy))*)
           }
         case DirectHitSwing(casterId, towardsTarget, _) =>
-          for (caster <- position(casterId)) {
+          for caster <- position(casterId) do {
             val angle =
               towardsTarget - Angle.Pi / 4 + Angle.fromDouble(math.Pi / 2 * t / effect.duration)
             val offset = 1.5 * Constants.playerRadius * Complex.rotation(angle)

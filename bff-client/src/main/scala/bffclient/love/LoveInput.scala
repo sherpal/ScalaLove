@@ -73,7 +73,7 @@ object LoveInput {
   /** The input code of a key event, like the frontend's `KeyboardHandler.enrich`. */
   def inputCode(scancode: String): Option[InputCode] =
     scancodeToCode.get(scancode).map { code =>
-      if (shiftDown) ModifiedKeyCode(code, KeyInputModifier.WithShift) else KeyCode(code)
+      if shiftDown then ModifiedKeyCode(code, KeyInputModifier.WithShift) else KeyCode(code)
     }
 
   /** Whether the key (or mouse button) of this input code is currently held. */

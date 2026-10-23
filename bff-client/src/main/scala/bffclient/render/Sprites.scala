@@ -10,10 +10,10 @@ final class Sprite(image: Image, rows: Int = 1, columns: Int = 1) {
   val frameWidth: Double  = image.getWidth() / columns
   val frameHeight: Double = image.getHeight() / rows
 
-  private val frames: Vector[Quad] = for {
+  private val frames: Vector[Quad] = for
     row    <- (0 until rows).toVector
     column <- 0 until columns
-  } yield Graphics.newQuad(
+  yield Graphics.newQuad(
     column * frameWidth,
     row * frameHeight,
     frameWidth,
@@ -37,7 +37,7 @@ final class Sprite(image: Image, rows: Int = 1, columns: Int = 1) {
       frame: Int = 0
   ): Unit = {
     val scaleX = width / frameWidth
-    val scaleY = if (height < 0) scaleX else height / frameHeight
+    val scaleY = if height < 0 then scaleX else height / frameHeight
     Graphics.draw(
       image,
       frames(frame % frames.size),

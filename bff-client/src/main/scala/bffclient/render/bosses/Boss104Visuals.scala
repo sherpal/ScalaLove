@@ -23,23 +23,23 @@ object Boss104Visuals extends BossVisuals {
 
   def ground(p: Painter): Unit = {
     import p.*
-    for (debuffCircle <- gameState.allTEntities[DebuffCircle].values)
+    for debuffCircle <- gameState.allTEntities[DebuffCircle].values do
       circle(debuffCircle.pos, debuffCircle.shape.radius, Some(paint(debuffCircle.colour, 0.5)))
-    for {
+    for
       buff   <- gameState.allTBuffs[TwinDebuff]
       player <- gameState.players.get(buff.bearerId)
-    }
+    do
       circle(position(player), player.shape.radius * 1.5, Some(paint(buff.colour, 0.5)))
-    for (mark <- gameState.allTEntities[BigGuyDeathMark].values)
+    for mark <- gameState.allTEntities[BigGuyDeathMark].values do
       circle(mark.pos, mark.shape.radius, Some(Paint(0, 0, 0, 0.5)))
-    for (triangle <- gameState.allTEntities[DeathMarkTriangle].values) {
-      val colour = if (triangle.insideIsDeadly) RGBColour.red else RGBColour.green
+    for triangle <- gameState.allTEntities[DeathMarkTriangle].values do {
+      val colour = if triangle.insideIsDeadly then RGBColour.red else RGBColour.green
       polygon(triangle.vertices, Some(paint(colour, 0.15)), Some((3, paint(colour))))
     }
   }
 
   def adds(p: Painter): Unit =
-    for (bigGuy <- p.gameState.allTEntities[BigGuy].values) {
+    for bigGuy <- p.gameState.allTEntities[BigGuy].values do {
       p.shape(bigGuy, Some(addColour.withAlpha(0.3)), Some((2, addColour)))
       withBars(p, bigGuy)
     }

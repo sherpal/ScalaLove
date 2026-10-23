@@ -21,10 +21,10 @@ final class GameMenu(client: GameClient, leaveGame: Option[() => Unit]) {
     ui.panel(box)
     ui.textIn("Menu", Rect(box.x, box.y + 16, box.width, 50), Theme.title)
     ui.textIn(
-      if (confirmingSurrender) "The fight ends in a defeat, for everyone" else "The game goes on meanwhile",
+      if confirmingSurrender then "The fight ends in a defeat, for everyone" else "The game goes on meanwhile",
       Rect(box.x, box.y + 66, box.width, 24),
       Theme.small,
-      if (confirmingSurrender) Theme.negative.lighter(0.3) else Theme.muted
+      if confirmingSurrender then Theme.negative.lighter(0.3) else Theme.muted
     )
 
     var index = 0
@@ -38,18 +38,18 @@ final class GameMenu(client: GameClient, leaveGame: Option[() => Unit]) {
       clicked
     }
 
-    if (button("Resume", ButtonStyle.Primary) || ui.wasPressed("escape")) {
+    if button("Resume", ButtonStyle.Primary) || ui.wasPressed("escape") then {
       client.menuOpen = false
       confirmingSurrender = false
     }
-    if (canSurrender) {
-      val label = if (confirmingSurrender) "Click again to surrender" else "Surrender"
-      if (button(label, if (confirmingSurrender) ButtonStyle.Danger else ButtonStyle.Normal)) {
-        if (confirmingSurrender) client.surrender()
+    if canSurrender then {
+      val label = if confirmingSurrender then "Click again to surrender" else "Surrender"
+      if button(label, if confirmingSurrender then ButtonStyle.Danger else ButtonStyle.Normal) then {
+        if confirmingSurrender then client.surrender()
         confirmingSurrender = !confirmingSurrender
       }
     }
-    leaveGame.foreach(leave => if (button("Leave game", ButtonStyle.Normal)) leave())
-    if (button("Quit", ButtonStyle.Danger)) client.quit()
+    leaveGame.foreach(leave => if button("Leave game", ButtonStyle.Normal) then leave())
+    if button("Quit", ButtonStyle.Danger) then client.quit()
   }
 }

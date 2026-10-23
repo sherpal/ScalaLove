@@ -46,7 +46,7 @@ final class Painter(
         Graphics.circle(mode, x, y, circle.radius)
       case polygon: Polygon if mode == "fill" =>
         // Fill triangle by triangle, as obstacles can be concave
-        for (t <- polygon.triangulation) {
+        for t <- polygon.triangulation do {
           val corners = Seq(Complex(t.x0, t.y0), Complex(t.x1, t.y1), Complex(t.x2, t.y2))
             .map(_.rotate(rotation(body)) + pos)
           Graphics.polygon("fill", polygonCoords(corners)*)
@@ -147,12 +147,12 @@ final class Painter(
     */
   def buffIcons(entity: Entity & Body): Unit = {
     val buffs = iconBuffs(entity.id)
-    if (buffs.nonEmpty) {
+    if buffs.nonEmpty then {
       val size   = 16.0
       val (x, y) = toScreen(position(entity) + Complex.i * (entity.shape.radius + 10))
       val left   = x - buffs.size * (size + 2) / 2
       val top    = y - 2.5 - 3 - size
-      for (((buff, icon), i) <- buffs.zipWithIndex)
+      for ((buff, icon), i) <- buffs.zipWithIndex do
         buffIcon(buff, icon, left + i * (size + 2) + 1, top, size)
     }
   }
@@ -163,7 +163,7 @@ final class Painter(
   def buffIcon(buff: Buff, icon: Sprite, left: Double, top: Double, size: Double): Unit = {
     Graphics.setColor(1, 1, 1)
     icon.draw(left + size / 2, top + size / 2, 0, size, size)
-    if (buff.isFinite) {
+    if buff.isFinite then {
       Graphics.setColor(0, 0, 0, 0.5)
       Graphics.rectangle("fill", left, top, size, size * buff.remainingPercentage(gameState.time))
     }

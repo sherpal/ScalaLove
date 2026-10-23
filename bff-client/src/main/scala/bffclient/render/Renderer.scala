@@ -77,7 +77,7 @@ final class Renderer(client: GameClient) {
 
     // The aztec diamond, as in the Indigo frontend: twice its size, centred on the origin, half
     // transparent over the grey
-    for (background <- Sprites.aztecDiamond) {
+    for background <- Sprites.aztecDiamond do {
       val (x, y) = toScreen(Complex.zero)
       Graphics.setColor(1, 1, 1, 0.5)
       background.draw(x, y, 0, background.frameWidth * 2)
@@ -94,7 +94,7 @@ final class Renderer(client: GameClient) {
     bossVisuals.foreach(_.ground(painter))
 
     // Obstacles
-    for (case obstacle: Obstacle <- entities) {
+    for case obstacle: Obstacle <- entities do {
       Graphics.setColor(1, 1, 1)
       drawShape(obstacle, "fill")
       Graphics.setColor(0.6, 0.6, 0.6)
@@ -106,7 +106,7 @@ final class Renderer(client: GameClient) {
       Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0, alpha)
 
     // Other bodies (zones, bullets, adds, ...)
-    for (case body: Body <- entities) body match {
+    for case body: Body <- entities do body match {
       case _: Obstacle | _: BossEntity | _: PlayerClass => ()
       case drawn if bossVisuals.exists(_.draws(drawn)) => ()
       case zone: HexagonZone =>
@@ -135,7 +135,7 @@ final class Renderer(client: GameClient) {
     bossVisuals.foreach(_.adds(painter))
 
     // Bosses
-    for (boss <- gameState.bosses.values) {
+    for boss <- gameState.bosses.values do {
       Graphics.setColor(1, 1, 1)
       drawShape(boss, "fill")
       Graphics.setColor(0, 0, 0)
@@ -148,14 +148,14 @@ final class Renderer(client: GameClient) {
 
     // Sparks in the hands of a casting player, in the colour of the ability (like the frontend)
     def castingSparks(player: PlayerClass): Unit =
-      for {
+      for
         sprite <- Sprites.casting
         info   <- gameState.castingEntityInfo.get(player.id) if info.isCasting(now, 0L)
-      } {
+      do {
         val colour = info.ability.abilityColour
         Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0)
         val frame = ((now / 50) % sprite.frameCount).toInt
-        for (side <- Seq(1, -1)) {
+        for side <- Seq(1, -1) do {
           val angle =
             rotation(player) + Angle.fromDouble(side * 2 * math.Pi / player.shape.vertices.length)
           val (x, y) = toScreen(position(player) + Complex.polar(player.shape.radius, angle))
@@ -164,7 +164,7 @@ final class Renderer(client: GameClient) {
       }
 
     // Players: the frontend's sprite of their class, tinted with their colour (or their shape)
-    for (player <- gameState.players.values) {
+    for player <- gameState.players.values do {
       val (r, g, b) = player.rgb
       Sprites.playerClasses.get(player.cls.value) match {
         case Some(sprite) =>
@@ -196,25 +196,25 @@ final class Renderer(client: GameClient) {
     )
 
     // Target
-    for {
+    for
       id <- client.currentTarget
       case target: Body <- gameState.entities.get(id)
-    } {
+    do {
       val (x, y) = toScreen(position(target))
-      if (client.lockInToTarget) Graphics.setColor(1, 0.3, 0) else Graphics.setColor(1, 0.85, 0)
+      if client.lockInToTarget then Graphics.setColor(1, 0.3, 0) else Graphics.setColor(1, 0.85, 0)
       Graphics.setLineWidth(2)
       Graphics.circle("line", x, y, target.shape.radius + 6)
       Graphics.setLineWidth(1)
     }
 
     // Game markers (put with the marker controls)
-    for ((marker, info) <- gameState.markersInfo) {
+    for (marker, info) <- gameState.markersInfo do {
       val markerPosition = info match {
         case GameMarkerInfo.FixedGameMarker(_, gamePosition) => Some(gamePosition)
         case GameMarkerInfo.GameMarkerOnEntity(_, entityId) =>
           // Above the buff icons (of the players and bosses)
           gameState.entities.get(entityId).collect { case b: Body =>
-            val aboveIcons = if (iconBuffs(entityId).nonEmpty) 20 else 0
+            val aboveIcons = if iconBuffs(entityId).nonEmpty then 20 else 0
             position(b) + Complex.i * (b.shape.radius + 24 + aboveIcons)
           }
       }
@@ -228,7 +228,7 @@ final class Renderer(client: GameClient) {
     }
 
     // Zone placement preview
-    for (_ <- client.choosingPosition) {
+    for _ <- client.choosingPosition do {
       val (x, y) = toScreen(mouseWorld)
       Graphics.setColor(1, 1, 1, 0.4)
       Graphics.circle("fill", x, y, 45)
@@ -243,17 +243,17 @@ final class Renderer(client: GameClient) {
     * top during its cooldown, like the frontend's), key, name and remaining cooldown.
     */
   private def actionBar(gameState: GameState, now: Long, width: Int, height: Int): Unit =
-    for {
+    for
       id <- client.myId
       me <- gameState.players.get(id)
-    } {
+    do {
       import HudStyle.*
       val names     = abilityNames(me)
       val abilities = me.abilities.toArray
       val slot      = 176.0
       val left      = (width - slot * abilities.length) / 2
       val top       = height - 64.0
-      for ((abilityId, i) <- abilities.zipWithIndex) {
+      for (abilityId, i) <- abilities.zipWithIndex do {
         val rect     = Rect(left + i * slot + 2, top, slot - 4, 44)
         val used     = me.relevantUsedAbilities.get(abilityId)
         val cooldown = used.map(u => u.time + u.cooldown - now).filter(_ > 0)
@@ -266,13 +266,13 @@ final class Renderer(client: GameClient) {
         )
         val textLeft = Sprites.abilityIcons.get(abilityId) match {
           case Some(icon) =>
-            val iconTop = rect.y + 5 + (if (used.exists(u => now - u.time < 100)) 3 else 0)
+            val iconTop = rect.y + 5 + (if used.exists(u => now - u.time < 100) then 3 else 0)
             Graphics.setColor(1, 1, 1)
             icon.draw(rect.x + 22, iconTop + 16, 0, 32, 32)
-            for {
+            for
               remaining <- cooldown
               u         <- used
-            } {
+            do {
               Graphics.setColor(0, 0, 0, 0.55)
               Graphics.rectangle(
                 "fill",
@@ -286,10 +286,10 @@ final class Renderer(client: GameClient) {
             roundedLine(Rect(rect.x + 5, iconTop - 1, 34, 34), 3, Paint(0, 0, 0, 0.85), 2)
             rect.x + 42
           case None =>
-            for {
+            for
               remaining <- cooldown
               u         <- used
-            }
+            do
               roundedFill(
                 Rect(rect.x, rect.y, rect.width * remaining / u.cooldown.toDouble, rect.height),
                 6,
@@ -326,10 +326,10 @@ final class Renderer(client: GameClient) {
       s"Move: ${c.upKey.label} ${c.leftKey.label} ${c.downKey.label} ${c.rightKey.label}   " +
         s"Next target: ${c.nextTargetKey.label} (or click)   " +
         s"Face target: ${c.targetLockInToggleKey.label} (${
-            if (client.lockInToTarget) "on"
+            if client.lockInToTarget then "on"
             else "off"
           })   " +
-        s"Mouse over: ${if (c.mouseOverEnabled) "on" else "off"}   Escape: menu",
+        s"Mouse over: ${if c.mouseOverEnabled then "on" else "off"}   Escape: menu",
       10,
       90
     )
@@ -348,15 +348,15 @@ final class Renderer(client: GameClient) {
     Graphics.print(client.controlsInfo, 10, 126)
     Graphics.setColor(0, 0, 0)
     val message =
-      if (gameState.ended) if (gameState.playersWon) "Victory!" else "Defeat..."
-      else if (!gameState.started) "Waiting for the game to start..."
+      if gameState.ended then if gameState.playersWon then "Victory!" else "Defeat..."
+      else if !gameState.started then "Waiting for the game to start..."
       else ""
-    if (message.nonEmpty) Graphics.printf(message, 0, 170, width, "center")
+    if message.nonEmpty then Graphics.printf(message, 0, 170, width, "center")
     client.errorMessage.foreach { error =>
       Graphics.setColor(0.8, 0, 0)
       Graphics.printf(error, 0, 190, width, "center")
     }
-    if (client.choosingPosition.isDefined) {
+    if client.choosingPosition.isDefined then {
       Graphics.setColor(0, 0, 0)
       Graphics.printf("Click to place the zone (Escape to cancel)", 0, 210, width, "center")
     }

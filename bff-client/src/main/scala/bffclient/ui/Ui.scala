@@ -80,13 +80,13 @@ final class Ui {
 
   def mousePressed(x: Double, y: Double, button: Int): Unit = {
     buttons += button
-    if (button == 1) { pressedAt = Some((x, y)); pressedThisFrame = true }
+    if button == 1 then { pressedAt = Some((x, y)); pressedThisFrame = true }
   }
 
   def wheelMoved(dy: Double): Unit = wheelY += dy
 
   def mouseReleased(x: Double, y: Double, button: Int): Unit =
-    if (button == 1) releasedAt = Some((x, y))
+    if button == 1 then releasedAt = Some((x, y))
 
   def textInput(text: String): Unit = typed ++= text
 
@@ -96,15 +96,15 @@ final class Ui {
   def wasPressed(scancode: String): Boolean = inputEnabled && keys.contains(scancode)
 
   /** The keys (scancodes) pressed since the last frame, and not used by a text field. */
-  def pressedKeys: Seq[String] = if (inputEnabled) keys.toSeq else Seq.empty
+  def pressedKeys: Seq[String] = if inputEnabled then keys.toSeq else Seq.empty
 
   /** The mouse buttons (LÖVE's numbers: 1 left, 2 right, 3 middle, ...) pressed since the last
     * frame.
     */
-  def pressedButtons: Seq[Int] = if (inputEnabled) buttons.toSeq else Seq.empty
+  def pressedButtons: Seq[Int] = if inputEnabled then buttons.toSeq else Seq.empty
 
   /** How much the mouse wheel turned since the last frame (positive upwards). */
-  def wheel: Double = if (inputEnabled) wheelY else 0
+  def wheel: Double = if inputEnabled then wheelY else 0
 
   /** Draws widgets which ignore the inputs (e.g. under a dialog). */
   def inert(widgets: => Unit): Unit = {
@@ -134,8 +134,8 @@ final class Ui {
     val previousFont = Graphics.getFont()
     widgets
     Graphics.setFont(previousFont)
-    if (pressedThisFrame && !focusClaimed) focus = None
-    if (releasedAt.isDefined) pressedAt = None
+    if pressedThisFrame && !focusClaimed then focus = None
+    if releasedAt.isDefined then pressedAt = None
     releasedAt = None
     pressedThisFrame = false
     buttons.clear()
@@ -230,14 +230,14 @@ final class Ui {
       enabled: Boolean = true,
       style: ButtonStyle = ButtonStyle.Normal
   ): Boolean =
-    if (!enabled) {
+    if !enabled then {
       fill(rect, Theme.disabled)
       textIn(label, rect, colour = Theme.disabledText)
       false
     } else {
       val colour =
-        if (held(rect)) style.colour.lighter(0.3)
-        else if (hovered(rect)) style.colour.lighter(0.15)
+        if held(rect) then style.colour.lighter(0.3)
+        else if hovered(rect) then style.colour.lighter(0.15)
         else style.colour
       fill(rect, colour)
       textIn(label, rect)
@@ -251,13 +251,13 @@ final class Ui {
       placeholder: String = "",
       enabled: Boolean = true
   ): Boolean = {
-    if (enabled && inputEnabled && pressedThisFrame && pressedAt.exists(rect.contains)) {
+    if enabled && inputEnabled && pressedThisFrame && pressedAt.exists(rect.contains) then {
       focus = Some(input); focusClaimed = true
     }
     val hasFocus  = enabled && inputEnabled && focused(input)
     var submitted = false
-    if (hasFocus) {
-      if (typed.nonEmpty) input.text = (input.text + typed.toString).take(input.maxLength)
+    if hasFocus then {
+      if typed.nonEmpty then input.text = (input.text + typed.toString).take(input.maxLength)
       keys.foreach {
         case "backspace" => input.text = Ui.dropLastCharacter(input.text)
         case "return" | "kpenter" => submitted = true
@@ -266,18 +266,18 @@ final class Ui {
       keys.filterInPlace(key => key != "backspace" && key != "return" && key != "kpenter")
     }
     fill(rect, Theme.field)
-    outline(rect, if (hasFocus) Theme.primary.lighter(0.3) else Theme.border)
+    outline(rect, if hasFocus then Theme.primary.lighter(0.3) else Theme.border)
     val inner = Rect(rect.x + 8, rect.y, rect.width - 16, rect.height)
-    if (input.text.isEmpty && !hasFocus)
+    if input.text.isEmpty && !hasFocus then
       textIn(placeholder, inner, colour = Theme.muted, align = "left")
     else
       textIn(
         input.text,
         inner,
-        colour = if (enabled) Theme.text else Theme.disabledText,
+        colour = if enabled then Theme.text else Theme.disabledText,
         align = "left"
       )
-    if (hasFocus && (Timer.getTime() * 2).toInt % 2 == 0) {
+    if hasFocus && (Timer.getTime() * 2).toInt % 2 == 0 then {
       val cursorX = inner.x + textWidth(input.text) + 1
       fill(Rect(cursorX, rect.y + 7, 2, rect.height - 14), Theme.text)
     }
@@ -295,10 +295,10 @@ final class Ui {
     val box  = Rect(x, y, 22, 22)
     val area = Rect(x, y, 30 + textWidth(label), 22)
     fill(box, Theme.field)
-    outline(box, if (enabled && hovered(area)) Theme.primary.lighter(0.3) else Theme.border)
-    if (checked)
-      fill(box.inset(5), if (enabled) Theme.positive.lighter(0.2) else Theme.disabledText)
-    text(label, x + 30, y + 2, colour = if (enabled) Theme.text else Theme.disabledText)
+    outline(box, if enabled && hovered(area) then Theme.primary.lighter(0.3) else Theme.border)
+    if checked then
+      fill(box.inset(5), if enabled then Theme.positive.lighter(0.2) else Theme.disabledText)
+    text(label, x + 30, y + 2, colour = if enabled then Theme.text else Theme.disabledText)
     enabled && clicked(area)
   }
 
@@ -320,10 +320,10 @@ final class Ui {
     )
     val middle = Rect(rect.x + rect.height, rect.y, rect.width - 2 * rect.height, rect.height)
     fill(middle, Theme.field)
-    textIn(show(current), middle, colour = if (enabled) Theme.text else Theme.disabledText)
-    if (options.isEmpty) None
-    else if (previous) Some(options((index - 1 + options.size) % options.size))
-    else if (next) Some(options((index + 1) % options.size))
+    textIn(show(current), middle, colour = if enabled then Theme.text else Theme.disabledText)
+    if options.isEmpty then None
+    else if previous then Some(options((index - 1 + options.size) % options.size))
+    else if next then Some(options((index + 1) % options.size))
     else None
   }
 
@@ -337,16 +337,16 @@ final class Ui {
   ): Option[A] = {
     val width  = rect.width / options.size
     var chosen = Option.empty[A]
-    for ((option, i) <- options.zipWithIndex) {
-      val style = if (current.contains(option)) ButtonStyle.Primary else ButtonStyle.Normal
-      if (
+    for (option, i) <- options.zipWithIndex do {
+      val style = if current.contains(option) then ButtonStyle.Primary else ButtonStyle.Normal
+      if
         button(
           show(option),
           Rect(rect.x + i * width, rect.y, width - 2, rect.height),
           enabled,
           style
         )
-      )
+      then
         chosen = Some(option)
     }
     chosen
@@ -360,8 +360,8 @@ final class Ui {
       enabled: Boolean = true
   ): Boolean = {
     fill(rect, colour)
-    if (selected) { outline(rect, Theme.text); outline(rect.inset(1), Theme.text) }
-    else if (enabled && hovered(rect)) outline(rect, Theme.text.withAlpha(0.6))
+    if selected then { outline(rect, Theme.text); outline(rect.inset(1), Theme.text) }
+    else if enabled && hovered(rect) then outline(rect, Theme.text.withAlpha(0.6))
     enabled && clicked(rect)
   }
 
@@ -375,7 +375,7 @@ object Ui {
   /** Removes the last (UTF-8) character: LÖVE's strings are bytes. */
   def dropLastCharacter(text: String): String = {
     var end = text.length - 1
-    while (end > 0 && (text.charAt(end) & 0xc0) == 0x80) end -= 1
+    while end > 0 && (text.charAt(end) & 0xc0) == 0x80 do end -= 1
     text.substring(0, math.max(end, 0))
   }
 }

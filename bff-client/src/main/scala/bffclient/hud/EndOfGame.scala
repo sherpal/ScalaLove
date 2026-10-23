@@ -18,8 +18,8 @@ final class EndOfGame(client: GameClient, backToMenus: Option[() => Unit]) {
     ui.panel(box)
 
     val (title, colour) =
-      if (!gameState.ended) ("Connection lost", Theme.negative.lighter(0.3))
-      else if (gameState.playersWon) ("Victory!", Theme.positive.lighter(0.3))
+      if !gameState.ended then ("Connection lost", Theme.negative.lighter(0.3))
+      else if gameState.playersWon then ("Victory!", Theme.positive.lighter(0.3))
       else ("Defeat...", Theme.negative.lighter(0.3))
     ui.textIn(title, Rect(box.x, box.y + 20, box.width, 50), Theme.title, colour)
     val subtitle = (gameState.startTime, gameState.endTime) match {
@@ -39,21 +39,21 @@ final class EndOfGame(client: GameClient, backToMenus: Option[() => Unit]) {
           Rect(buttons.x, buttons.y, 250, buttons.height),
           style = ButtonStyle.Primary
         )
-        if (clicked || ui.wasPressed("return") || ui.wasPressed("kpenter")) back()
-        if (
+        if clicked || ui.wasPressed("return") || ui.wasPressed("kpenter") then back()
+        if
           ui.button("Quit", Rect(buttons.right - 140, buttons.y, 140, buttons.height)) || ui
             .wasPressed("escape")
-        )
+        then
           client.quit()
       case None =>
-        if (
+        if
           ui.button(
             "Quit",
             Rect(buttons.x, buttons.y, buttons.width, buttons.height),
             style = ButtonStyle.Primary
           ) ||
           ui.wasPressed("escape") || ui.wasPressed("return")
-        )
+        then
           client.quit()
     }
   }

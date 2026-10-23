@@ -23,7 +23,7 @@ final class MenuSession(
 
   def info(message: String): Unit = println(s"[menu] $message")
 
-  def run(): Future[GameAccess] = for {
+  def run(): Future[GameAccess] = for
     _  <- Future.successful(info(s"Logging in as $userName"))
     me <- api.login(userName)
     _ = info(s"Logged in: $me (cookie ${api.sessionCookie})")
@@ -48,7 +48,7 @@ final class MenuSession(
     _ = info(s"Start game: $started, waiting for the game server...")
     access <- credentials.future
     _ = info(s"Game server ready on port ${access.port}")
-  } yield access
+  yield access
 
   private def readyPlayerInfo = PlayerInfo(
     PlayerName.HumanPlayerName(userName),

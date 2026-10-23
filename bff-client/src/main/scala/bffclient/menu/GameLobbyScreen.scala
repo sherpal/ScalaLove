@@ -41,7 +41,7 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
   // Once the game started, the lobby websocket is closed by MenuApp when coming back to the menus
   override def leave(): Unit = {
     left = true
-    if (!gameStarted) lobby.foreach(_.close())
+    if !gameStarted then lobby.foreach(_.close())
   }
 
   private def received(maybeGame: Option[MenuGameWithPlayers]): Unit = maybeGame match {
@@ -54,7 +54,7 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
       app.show(new GamesScreen(app, user))
     case Some(g) =>
       game = Some(g)
-      if (!preferencesApplied) { preferencesApplied = true; applyPreferences(g) }
+      if !preferencesApplied then { preferencesApplied = true; applyPreferences(g) }
   }
 
   private def config: Option[GameConfiguration] = game.map(_.game.gameConfiguration)
@@ -66,17 +66,17 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
   /** Like the frontend, the last class, colour (and boss for the creator) are chosen again. */
   private def applyPreferences(g: MenuGameWithPlayers): Unit = {
     val preferences = app.preferences
-    for (info <- me) {
+    for info <- me do {
       val wanted = info
         .withClass(preferences.playerClass.orElse(info.maybePlayerClass))
         .copy(maybePlayerColour = preferences.colour.orElse(info.maybePlayerColour))
         .withReadyState(PlayerStatus.NotReady)
-      if (wanted != info) changeMe(_ => wanted)
+      if wanted != info then changeMe(_ => wanted)
     }
-    for (
+    for
       bossName <- preferences.bossName
       if amICreator && bossName != g.game.gameConfiguration.bossName
-    )
+    do
       changeBoss(bossName)
   }
 
@@ -150,15 +150,15 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
     val table = Rect(left, 90, leftWidth, 44 + 40 * math.max(players.size, 1))
     ui.panel(table)
     val columns = Seq("Name" -> 0.0, "Class" -> 0.35, "Colour" -> 0.58, "Ready" -> 0.72)
-    for ((title, at) <- columns)
+    for (title, at) <- columns do
       ui.text(title, table.x + 16 + at * table.width, table.y + 12, colour = Theme.muted)
-    for ((info, i) <- players.zipWithIndex) {
+    for (info, i) <- players.zipWithIndex do {
       val row = Rect(table.x + 1, table.y + 42 + 40 * i, table.width - 2, 40)
-      if (i % 2 == 0) ui.fill(row, Theme.background.withAlpha(0.35))
+      if i % 2 == 0 then ui.fill(row, Theme.background.withAlpha(0.35))
       def cell(at: Double) =
         Rect(table.x + 16 + at * table.width, row.y, table.width * 0.2, row.height)
       val name = info.playerName match {
-        case PlayerName.HumanPlayerName(name) => if (name == user.name) s"$name (you)" else name
+        case PlayerName.HumanPlayerName(name) => if name == user.name then s"$name (you)" else name
         case ai: PlayerName.AIPlayerName => s"${ai.name} (AI)"
       }
       ui.textIn(name, cell(columns(0)._2), align = "left")
@@ -166,7 +166,7 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
         info.maybePlayerClass.fold("Not chosen")(_.value),
         cell(columns(1)._2),
         align = "left",
-        colour = if (info.maybePlayerClass.isDefined) Theme.text else Theme.muted
+        colour = if info.maybePlayerClass.isDefined then Theme.text else Theme.muted
       )
       info.maybePlayerColour match {
         case Some(colour) =>
@@ -178,15 +178,15 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
         case None => ui.textIn("-", cell(columns(2)._2), align = "left", colour = Theme.muted)
       }
       ui.textIn(
-        if (info.isReady) "Ready" else "Not ready",
+        if info.isReady then "Ready" else "Not ready",
         cell(columns(3)._2),
         align = "left",
-        colour = if (info.isReady) Theme.positive.lighter(0.3) else Theme.negative.lighter(0.3)
+        colour = if info.isReady then Theme.positive.lighter(0.3) else Theme.negative.lighter(0.3)
       )
-      if (
+      if
         amICreator && info.playerName.name != user.name &&
         ui.button("Kick", Rect(row.right - 80, row.y + 5, 70, 30), enabled, ButtonStyle.Danger)
-      ) {
+      then {
         busy = true
         app.attempt(app.api.kickPlayer(gameId, info.playerName.name))(
           _ => busy = false,
@@ -197,7 +197,7 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
 
     // My settings
     var y = table.bottom + 20
-    for (info <- me) {
+    for info <- me do {
       val panel = Rect(left, y, leftWidth, 150)
       ui.panel(panel)
       ui.text("Class", panel.x + 16, panel.y + 18, colour = Theme.muted)
@@ -209,28 +209,28 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
         enabled
       ).foreach(cls => changeMe(_.withClass(Some(cls))))
       ui.text("Colour", panel.x + 16, panel.y + 64, colour = Theme.muted)
-      for ((colour, i) <- MenuColours.palette.zipWithIndex)
-        if (
+      for (colour, i) <- MenuColours.palette.zipWithIndex do
+        if
           ui.swatch(
             MenuColours.toUi(colour),
             Rect(panel.x + 100 + 30 * i, panel.y + 60, 24, 24),
             info.maybePlayerColour.contains(colour),
             enabled
           )
-        )
+        then
           changeMe(_.withColour(colour))
-      if (ui.checkbox(info.isReady, "Ready", panel.x + 16, panel.y + 108, enabled))
-        changeMe(_.withReadyState(if (info.isReady) PlayerStatus.NotReady else PlayerStatus.Ready))
+      if ui.checkbox(info.isReady, "Ready", panel.x + 16, panel.y + 108, enabled) then
+        changeMe(_.withReadyState(if info.isReady then PlayerStatus.NotReady else PlayerStatus.Ready))
       y = panel.bottom + 20
     }
 
     // What prevents the game to start
     val problems = configuration.validate.toVector.sortBy(_._1)
-    if (problems.isEmpty)
+    if problems.isEmpty then
       ui.text("Everyone is ready and well set, LFG", left, y, colour = Theme.positive.lighter(0.3))
     else {
       ui.text("The following things prevent the game to start:", left, y)
-      for (((name, errors), i) <- problems.zipWithIndex)
+      for ((name, errors), i) <- problems.zipWithIndex do
         ui.text(
           s"$name: ${errors.mkString(", ")}",
           left + 16,
@@ -252,23 +252,23 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
 
     // Actions
     val bar = height - 70
-    if (ui.button("Leave game", Rect(left, bar, 150, 44), enabled)) leaveGame()
-    if (ui.button("Controls", Rect(left + 160, bar, 130, 44))) app.showControls()
-    if (amICreator) {
+    if ui.button("Leave game", Rect(left, bar, 150, 44), enabled) then leaveGame()
+    if ui.button("Controls", Rect(left + 160, bar, 130, 44)) then app.showControls()
+    if amICreator then {
       // Like the menu server, which picks the classes of the AIs: all the players' classes count
       val classes = configuration.playersInfo.values.flatMap(_.maybePlayerClass).toVector
       val toFill  = boss.flatMap(_.fillWithAI(classes)).fold(0)(_.size)
-      if (ui.button("Add AI", Rect(width - 560, bar, 150, 44), enabled && toFill > 0)) addAIs(1)
-      if (ui.button("Fill with AIs", Rect(width - 400, bar, 170, 44), enabled && toFill > 0))
+      if ui.button("Add AI", Rect(width - 560, bar, 150, 44), enabled && toFill > 0) then addAIs(1)
+      if ui.button("Fill with AIs", Rect(width - 400, bar, 170, 44), enabled && toFill > 0) then
         addAIs(toFill)
-      if (
+      if
         ui.button(
           "Launch game!",
           Rect(width - 220, bar, 180, 44),
           enabled && !launching && g.game.gameConfigurationIsValid,
           ButtonStyle.Positive
         )
-      ) {
+      then {
         launching = true
         app.attempt(app.api.startGame(gameId))(_ => (), _ => launching = false)
       }
@@ -280,16 +280,16 @@ final class GameLobbyScreen(app: MenuApp, user: User, gameId: String)(using Exec
         align = "right"
       )
 
-    for (since <- startingSince) {
+    for since <- startingSince do {
       ui.fill(Rect(0, 0, width, height), Theme.background.withAlpha(0.8))
       ui.loading("Game is starting, please wait for setup to finish", width / 2 - 240, height / 2)
-      if (Timer.getTime() - since > 30) {
+      if Timer.getTime() - since > 30 then {
         ui.textIn(
           "The game server did not answer.",
           Rect(0, height / 2 + 40, width, 30),
           colour = Theme.muted
         )
-        if (ui.button("Leave game", Rect(width / 2 - 75, height / 2 + 80, 150, 44), !busy))
+        if ui.button("Leave game", Rect(width / 2 - 75, height / 2 + 80, 150, 44), !busy) then
           leaveGame()
       }
     }

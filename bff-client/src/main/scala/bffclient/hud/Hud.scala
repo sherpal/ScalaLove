@@ -46,7 +46,7 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
   /** Lightens the frame under the mouse (like the frontend's `HoverHighlight`). */
   private def hoverHighlight(rect: Rect, radius: Double = 6): Unit = {
     val mouse = Mouse.getPosition()
-    if (rect.contains(mouse.x, mouse.y)) {
+    if rect.contains(mouse.x, mouse.y) then {
       roundedFill(rect, radius, Paint(1, 1, 1, 0.1))
       roundedLine(rect, radius, Paint(1, 1, 1, 0.5), 1)
     }
@@ -66,7 +66,7 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
     bossFrame(p, width)
     bossCooldowns(p, width)
     threatMeter(p, width, height)
-    for (line <- bossVisuals().flatMap(_.hudText(p.gameState))) {
+    for line <- bossVisuals().flatMap(_.hudText(p.gameState)) do {
       val rect = Rect(width - 164, height / 2 - 12, 160, 24)
       panel(rect)
       text(line, rect, "right")
@@ -77,16 +77,16 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
   private def teamFrames(p: Painter): Unit = {
     val gameState = p.gameState
     val players   = (gameState.players ++ gameState.deadPlayers).toVector.sortBy(_._2.name)
-    for (((id, player), i) <- players.zipWithIndex)
+    for ((id, player), i) <- players.zipWithIndex do
       playerFrame(p, id, player, Rect(4, 150 + i * (frameHeight + 4), 150, frameHeight))
   }
 
   /** Our own frame, left of the centre above the action bar. */
   private def myFrame(p: Painter, width: Double, height: Double): Unit =
-    for {
+    for
       id     <- client.myId
       player <- p.gameState.players.get(id).orElse(p.gameState.deadPlayers.get(id))
-    }
+    do
       playerFrame(p, id, player, Rect(width / 2 - 210, bottomFramesTop(height), 200, frameHeight))
 
   /** The class of the player in a round badge, in their colour. */
@@ -114,17 +114,17 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
     val alpha     = alive.fold(1.0)(inHealingRangeAlpha(p, _))
 
     panel(frame, alpha)
-    for ((colour, opacity) <- bossVisuals().flatMap(_.playerFrameTint(gameState, id))) {
+    for (colour, opacity) <- bossVisuals().flatMap(_.playerFrameTint(gameState, id)) do {
       roundedFill(frame, 6, colour.withAlpha(0.6 * opacity), alpha)
       roundedLine(frame.inset(1), 5, colour, 2, alpha)
     }
-    if (client.currentTarget.contains(id)) targetGlow(frame)
+    if client.currentTarget.contains(id) then targetGlow(frame)
 
     classBadge(player, frame.x + 14, frame.y + 12, alpha)
     text(
       player.name,
       Rect(frame.x + 25, frame.y + 3, frame.width - 29, 18),
-      colour = if (alive.isDefined) textColour else mutedColour,
+      colour = if alive.isDefined then textColour else mutedColour,
       alpha = alpha
     )
 
@@ -142,7 +142,7 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
       alpha = alpha
     )
 
-    for (a <- alive) resourceBar(a, Rect(frame.x + 6, frame.y + 39, frame.width - 12, 9), alpha)
+    for a <- alive do resourceBar(a, Rect(frame.x + 6, frame.y + 39, frame.width - 12, 9), alpha)
 
     val iconSize = 13
     for (
@@ -159,9 +159,9 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
 
   /** 0.5 if the entity is out of our healing range, 1 otherwise. */
   private def inHealingRangeAlpha(p: Painter, entity: Entity & WithPosition): Double =
-    (for (me <- client.myId.flatMap(p.gameState.players.get) if me.id != entity.id) yield {
+    (for me <- client.myId.flatMap(p.gameState.players.get) if me.id != entity.id yield {
       val distance2 = (entity.currentPosition(p.now) - me.currentPosition(p.now)).modulus2
-      if (distance2 > WithTargetAbility.healRangeSquared) 0.5 else 1.0
+      if distance2 > WithTargetAbility.healRangeSquared then 0.5 else 1.0
     }).getOrElse(1.0)
 
   private def resourceBar(entity: WithAbilities, rect: Rect, alpha: Double): Unit = {
@@ -232,16 +232,16 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
         case _ => ()
       }
 
-      for (((buff, icon), j) <- p.iconBuffs(target.id).zipWithIndex.take(12))
+      for ((buff, icon), j) <- p.iconBuffs(target.id).zipWithIndex.take(12) do
         p.buffIcon(buff, icon, frame.x + 6 + j * 15, frame.y + 50, 13)
 
-      for (info <- p.gameState.castingEntityInfo.get(target.id) if info.isCasting(p.now, 0L)) {
+      for info <- p.gameState.castingEntityInfo.get(target.id) if info.isCasting(p.now, 0L) do {
         val castBar = Rect(frame.x, frame.y - 17, frame.width, 13)
         bar(castBar, castProgress(p, info), Paint.rgb(245, 160, 40))
         text(abilityName(target, info.ability.abilityId), castBar, "center")
       }
 
-      if (client.lockInToTarget) Sprites.smallLock.foreach { lock =>
+      if client.lockInToTarget then Sprites.smallLock.foreach { lock =>
         Graphics.setColor(1, 1, 1)
         lock.draw(frame.right - 9, frame.y + 12, 0, lock.frameWidth)
       }
@@ -253,11 +253,11 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
     * `PlayerCastBar`), with the time remaining.
     */
   private def castBar(p: Painter, width: Double, height: Double): Unit =
-    for {
+    for
       id   <- client.myId
       me   <- p.gameState.players.get(id)
       info <- p.gameState.castingEntityInfo.get(id) if info.isCasting(p.now, 0L)
-    } {
+    do {
       val rect = Rect(width / 2 - 100, bottomFramesTop(height) - 44, 200, 22)
       panel(rect, radius = 5)
       val inner = rect.inset(4)
@@ -269,23 +269,23 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
 
   /** Life and name of the boss, what it casts, and its buffs. */
   private def bossFrame(p: Painter, width: Double): Unit =
-    for (boss <- p.gameState.bosses.values.headOption) {
+    for boss <- p.gameState.bosses.values.headOption do {
       val casting  = p.gameState.castingEntityInfo.get(boss.id).filter(_.isCasting(p.now, 0L))
       val buffs    = p.iconBuffs(boss.id)
-      val buffsTop = 4 + (if (casting.isDefined) 42 else 26)
-      val rect     = Rect(width / 2 - 150, 4, 300, buffsTop - 4 + (if (buffs.nonEmpty) 19 else 2))
+      val buffsTop = 4 + (if casting.isDefined then 42 else 26)
+      val rect     = Rect(width / 2 - 150, 4, 300, buffsTop - 4 + (if buffs.nonEmpty then 19 else 2))
       panel(rect)
       val lifeBar = Rect(rect.x + 5, rect.y + 5, rect.width - 10, 18)
       val life    = ratio(boss.life, boss.maxLife)
       bar(lifeBar, life, lifeColour(life))
       text(boss.name, lifeBar)
       text(s"${math.round(life * 100)}%", lifeBar, "right")
-      for (info <- casting) {
+      for info <- casting do {
         val castBar = Rect(rect.x + 5, rect.y + 26, rect.width - 10, 13)
         bar(castBar, castProgress(p, info), softened(info.ability.abilityColour))
         text(abilityName(boss, info.ability.abilityId), castBar, "center")
       }
-      for (((buff, icon), i) <- buffs.zipWithIndex.take(18))
+      for ((buff, icon), i) <- buffs.zipWithIndex.take(18) do
         p.buffIcon(buff, icon, rect.x + 6 + i * 16, buffsTop, 14)
       hoverHighlight(rect)
       clickable :+= (rect, boss.id)
@@ -293,7 +293,7 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
 
   /** One bar per ability of the boss, in its colour, emptying until it is ready again. */
   private def bossCooldowns(p: Painter, width: Double): Unit =
-    for (boss <- p.gameState.bosses.values.headOption) {
+    for boss <- p.gameState.bosses.values.headOption do {
       val abilities = boss.abilityNames.toVector
       val rect      = Rect(width - 168, 4, 164, 24 + 17 * abilities.size)
       panel(rect)
@@ -303,7 +303,7 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
         colour = mutedColour,
         padding = 6
       )
-      for (((abilityId, name), i) <- abilities.zipWithIndex) {
+      for ((abilityId, name), i) <- abilities.zipWithIndex do {
         val row       = Rect(rect.x + 6, rect.y + 21 + 17 * i, rect.width - 12, 14)
         val lastUse   = boss.relevantUsedAbilities.get(abilityId)
         val remaining = lastUse.fold(0L)(use => math.max(0L, use.cooldown - (p.now - use.time)))
@@ -313,9 +313,9 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
           softened(Ability.abilityColour(abilityId))
         )
         text(name, row)
-        if (remaining > 0)
+        if remaining > 0 then
           text(
-            if (remaining >= 1000) s"${remaining / 1000}s" else f"${remaining / 1000.0}%.1f",
+            if remaining >= 1000 then s"${remaining / 1000}s" else f"${remaining / 1000.0}%.1f",
             row,
             "right"
           )
@@ -324,7 +324,7 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
 
   /** The players by the boss's threat towards them, the highest first. */
   private def threatMeter(p: Painter, width: Double, height: Double): Unit =
-    for (boss <- p.gameState.bosses.values.headOption) {
+    for boss <- p.gameState.bosses.values.headOption do {
       val threats = boss.damageThreats.toVector
         .flatMap((id, amount) => p.gameState.players.get(id).map(_ -> amount.value))
         .sortBy(-_._2)
@@ -338,7 +338,7 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
         colour = mutedColour,
         padding = 6
       )
-      for (((player, amount), i) <- threats.zipWithIndex) {
+      for ((player, amount), i) <- threats.zipWithIndex do {
         val row = Rect(placed.x + 6, placed.y + 21 + 17 * i, placed.width - 12, 14)
         bar(row, amount / maxThreat, softened(RGBColour.fromIntColour(player.colour)))
         text(player.name, row)

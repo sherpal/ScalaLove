@@ -82,7 +82,7 @@ object Main {
       s"?userName=${access.userName}&secret=${access.secret}&gameId=${access.gameId}"
     println(s"Connecting to $url")
     val connection = WebSocketModule.connect(url)
-    if (connection.socket == null) {
+    if connection.socket == null then {
       println(s"Connection failed: ${connection.error}")
       backToMenus match {
         case Some(back) => back(GameExit.CannotConnect(connection.error))
@@ -93,7 +93,7 @@ object Main {
       val (controls, controlsInfo) = ControlsFile.load()
       println(controlsInfo)
       val lag = env("BFF_LAG_MS", "0").toDouble / 1000
-      if (lag > 0) println(s"Simulated latency: ${lag * 1000} ms round trip")
+      if lag > 0 then println(s"Simulated latency: ${lag * 1000} ms round trip")
       if headless then {
         val client = new GameClient(
           connection.socket,
@@ -131,21 +131,21 @@ object Main {
         Love.update = dt => client.update(dt)
         Love.draw = () => {
           renderer.draw()
-          if (client.finished) ui.frame(endOfGame.draw(ui))
-          else if (client.menuOpen) ui.frame(gameMenu.draw(ui))
+          if client.finished then ui.frame(endOfGame.draw(ui))
+          else if client.menuOpen then ui.frame(gameMenu.draw(ui))
         }
         Love.keypressed = (_, scancode, isRepeat) =>
-          if (overlayShown) ui.keyPressed(scancode) else if (!isRepeat) client.keyPressed(scancode)
-        Love.keyreleased = (_, scancode) => if (!overlayShown) client.keyReleased(scancode)
+          if overlayShown then ui.keyPressed(scancode) else if !isRepeat then client.keyPressed(scancode)
+        Love.keyreleased = (_, scancode) => if !overlayShown then client.keyReleased(scancode)
         Love.mousepressed = (x, y, button, _, _) =>
-          if (overlayShown) ui.mousePressed(x, y, button)
-          else if (button == 1) renderer.hud.targetAt(x, y) match {
+          if overlayShown then ui.mousePressed(x, y, button)
+          else if button == 1 then renderer.hud.targetAt(x, y) match {
             case Some(id) => client.selectTarget(id) // a frame of the HUD
             case None => client.clicked(renderer.toWorld(x, y))
           }
         Love.mousereleased = (x, y, button, _, _) =>
-          if (overlayShown) ui.mouseReleased(x, y, button)
-          else if (button != 1)
+          if overlayShown then ui.mouseReleased(x, y, button)
+          else if button != 1 then
             client.mouseButtonReleased(button) // the left one targets and places zones
       }
     }

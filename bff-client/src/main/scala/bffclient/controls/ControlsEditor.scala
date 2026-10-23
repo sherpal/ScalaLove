@@ -108,7 +108,7 @@ final class ControlsEditor(close: () => Unit) {
     )
     ui.textIn("Escape to cancel", Rect(box.x, box.y + 290, box.width, 24), colour = Theme.muted)
     val modifiers = Set("lshift", "rshift")
-    if (ui.wasPressed("escape")) waiting = None
+    if ui.wasPressed("escape") then waiting = None
     else
       ui.pressedKeys
         .filterNot(modifiers)
@@ -122,10 +122,10 @@ final class ControlsEditor(close: () => Unit) {
 
   private def bindings(ui: Ui, box: Rect): Unit = {
     def column(bindings: Seq[Binding], left: Double): Unit =
-      for ((binding, i) <- bindings.zipWithIndex) {
+      for (binding, i) <- bindings.zipWithIndex do {
         val y = box.y + 84 + 25 * i
         ui.text(binding.action, left, y + 3)
-        if (ui.button(binding.code.label, Rect(left + 190, y, 200, 23)))
+        if ui.button(binding.code.label, Rect(left + 190, y, 200, 23)) then
           waiting = Some((binding.action, binding.change))
       }
     column(movementsAndAbilities(controls), box.x + 24)
@@ -133,7 +133,7 @@ final class ControlsEditor(close: () => Unit) {
     column(markerBindings, box.x + 470)
 
     val toggleY = box.y + 84 + 25 * markerBindings.size + 12
-    if (ui.checkbox(controls.mouseOverEnabled, "Mouse over", box.x + 470, toggleY))
+    if ui.checkbox(controls.mouseOverEnabled, "Mouse over", box.x + 470, toggleY) then
       set(controls.copy(mouseOverEnabled = !controls.mouseOverEnabled))
     ui.paragraph(
       "Abilities fall back to the frame under the mouse when the target is not valid for them.",
@@ -145,21 +145,21 @@ final class ControlsEditor(close: () => Unit) {
     )
 
     val bottom = box.bottom - 60
-    for (key <- controls.maybeMultipleKey)
+    for key <- controls.maybeMultipleKey do
       ui.text(
         s"${key.label} is bound to several actions",
         box.x + 24,
         bottom + 12,
         colour = Theme.negative.lighter(0.3)
       )
-    for (message <- error)
+    for message <- error do
       ui.text(message, box.x + 24, bottom - 14, Theme.small, Theme.negative.lighter(0.3))
-    if (ui.button("Reset to defaults", Rect(box.right - 380, bottom, 190, 40)))
+    if ui.button("Reset to defaults", Rect(box.right - 380, bottom, 190, 40)) then
       set(Pointed[Controls].unit)
-    if (
+    if
       ui.button("Done", Rect(box.right - 174, bottom, 150, 40), style = ButtonStyle.Primary) || ui
         .wasPressed("escape")
-    )
+    then
       close()
   }
 }

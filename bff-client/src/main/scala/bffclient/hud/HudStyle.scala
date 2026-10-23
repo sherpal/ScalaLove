@@ -28,8 +28,8 @@ object HudStyle {
 
   /** Green, then orange, then red (like the frontend's `StatusBar.lifeStatusColor`). */
   def lifeColour(ratio: Double): Paint =
-    if (ratio > 0.5) Paint.rgb(70, 200, 95)
-    else if (ratio > 0.2) Paint.rgb(240, 165, 45)
+    if ratio > 0.5 then Paint.rgb(70, 200, 95)
+    else if ratio > 0.2 then Paint.rgb(240, 165, 45)
     else Paint.rgb(225, 65, 60)
 
   def roundedFill(rect: Rect, radius: Double, colour: Paint, alpha: Double = 1.0): Unit = {
@@ -82,7 +82,7 @@ object HudStyle {
     val radius = math.min(3.0, rect.height / 2)
     roundedFill(rect, radius, trackColour, alpha)
     val width = rect.width * math.max(0.0, math.min(1.0, ratio))
-    if (width >= 1) {
+    if width >= 1 then {
       roundedFill(
         Rect(rect.x, rect.y, width, rect.height),
         math.min(radius, width / 2),
@@ -90,7 +90,7 @@ object HudStyle {
         alpha
       )
       // A sheen on the upper part
-      if (width > 2) {
+      if width > 2 then {
         set(Paint(1, 1, 1, 0.2), alpha)
         Graphics.rectangle("fill", rect.x + 1, rect.y + 1, width - 2, rect.height * 0.4)
       }
@@ -108,7 +108,7 @@ object HudStyle {
       alpha: Double = 1.0,
       padding: Double = 4
   ): Unit = {
-    val f            = if (rect.height < 15) smallFont else font
+    val f            = if rect.height < 15 then smallFont else font
     val previousFont = Graphics.getFont()
     Graphics.setFont(f)
     val y = math.round(rect.y + (rect.height - f.getHeight()) / 2).toDouble
@@ -121,5 +121,5 @@ object HudStyle {
   }
 
   def ratio(value: Double, max: Double): Double =
-    if (max <= 0) 0 else math.max(0.0, math.min(1.0, value / max))
+    if max <= 0 then 0 else math.max(0.0, math.min(1.0, value / max))
 }

@@ -21,7 +21,7 @@ object SirOfViceVisuals extends BossVisuals {
 
   def ground(p: Painter): Unit = {
     import p.*
-    for (case boss: SirOfVice <- gameState.bosses.values) {
+    for case boss: SirOfVice <- gameState.bosses.values do {
       val centre = position(boss)
       circle(
         centre,
@@ -29,7 +29,7 @@ object SirOfViceVisuals extends BossVisuals {
         Some(auraColour.withAlpha(0.08)),
         Some((2, auraColour.withAlpha(0.5)))
       )
-      for (info <- casting(p, boss.id)) info.ability match {
+      for info <- casting(p, boss.id) do info.ability match {
         case _: CleansingNova =>
           circle(
             centre,
@@ -38,7 +38,7 @@ object SirOfViceVisuals extends BossVisuals {
             Some((3, novaColour.withAlpha(0.6)))
           )
         case wrath: HolyWrath =>
-          for (target <- gameState.players.get(wrath.targetId))
+          for target <- gameState.players.get(wrath.targetId) do
             circle(
               position(target),
               HolyWrath.jumpRange,
@@ -48,12 +48,12 @@ object SirOfViceVisuals extends BossVisuals {
         case _ => ()
       }
     }
-    for (
+    for
       chain <- gameState.allTEntities[HolyWrathChain].values
       if gameState.time - chain.time < HolyWrathChain.displayDuration
-    ) {
+    do {
       val alpha = 1.0 - (gameState.time - chain.time).toDouble / HolyWrathChain.displayDuration
-      for ((from, to) <- chain.positions.zip(chain.positions.drop(1)))
+      for (from, to) <- chain.positions.zip(chain.positions.drop(1)) do
         line(from, to, 4, wrathColour.withAlpha(alpha))
     }
   }

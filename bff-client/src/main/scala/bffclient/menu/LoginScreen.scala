@@ -13,7 +13,7 @@ final class LoginScreen(app: MenuApp)(using ExecutionContext) extends Screen {
   private val name  = TextInput(app.preferences.userName, maxLength = 20)
   private var busy  = false
   private var error = Option.empty[String]
-  app.ui.setFocus(if (server.text.isEmpty) server else name)
+  app.ui.setFocus(if server.text.isEmpty then server else name)
 
   def draw(ui: Ui): Unit = {
     val (width, height) = app.size
@@ -33,17 +33,17 @@ final class LoginScreen(app: MenuApp)(using ExecutionContext) extends Screen {
     error.foreach(message =>
       ui.paragraph(message, box.x + 30, box.y + 182, 380, Theme.small, Theme.negative)
     )
-    if (busy) ui.loading("Logging in", box.x + 30, box.y + 230)
+    if busy then ui.loading("Logging in", box.x + 30, box.y + 230)
     val clicked = ui.button(
       "LFG!",
       Rect(box.right - 150, box.y + 220, 120, 40),
       enabled = !busy,
       ButtonStyle.Primary
     )
-    if (ui.wasPressed("tab")) ui.setFocus(if (ui.focused(server)) name else server)
-    if (serverEntered && name.text.trim.isEmpty) ui.setFocus(name)
-    else if ((serverEntered || nameEntered || clicked) && !busy) login()
-    if (ui.wasPressed("escape")) Event.quit(0)
+    if ui.wasPressed("tab") then ui.setFocus(if ui.focused(server) then name else server)
+    if serverEntered && name.text.trim.isEmpty then ui.setFocus(name)
+    else if (serverEntered || nameEntered || clicked) && !busy then login()
+    if ui.wasPressed("escape") then Event.quit(0)
   }
 
   private def login(): Unit = {

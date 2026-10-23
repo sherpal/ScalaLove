@@ -20,7 +20,7 @@ final case class MenuPreferences(
 ) {
   def save(): Unit = {
     val written = Filesystem.write(MenuPreferences.fileName, this.asJson.spaces2)
-    if (!written.success) println(s"Could not save the menu preferences: ${written.message}")
+    if !written.success then println(s"Could not save the menu preferences: ${written.message}")
   }
 }
 
@@ -31,7 +31,7 @@ object MenuPreferences {
 
   def load(): MenuPreferences = {
     val empty = MenuPreferences(None, "", None, None, None)
-    if (Filesystem.getInfo(fileName) == null) empty
+    if Filesystem.getInfo(fileName) == null then empty
     else decode[MenuPreferences](Filesystem.read(fileName).contents).getOrElse(empty)
   }
 }

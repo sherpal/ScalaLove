@@ -32,53 +32,53 @@ object Boss105Visuals extends BossVisuals {
     import p.*
     val time = now.toDouble
 
-    for (case boss: Boss105 <- gameState.bosses.values) {
+    for case boss: Boss105 <- gameState.bosses.values do {
       val bossPosition = position(boss)
 
       // The twins' auras (half the resonance range) touch exactly when they resonate
-      for (shade <- gameState.allTEntities[Shade].values) {
+      for shade <- gameState.allTEntities[Shade].values do {
         val shadePosition = position(shade)
         val resonating    = bossPosition.distanceTo(shadePosition) < Resonance.range
-        val colour        = if (resonating) resonanceColour else shadeColour
-        val pulse         = if (resonating) 0.12 + 0.08 * math.sin(time / 80.0) else 0.0
-        for (centre <- Seq(bossPosition, shadePosition))
+        val colour        = if resonating then resonanceColour else shadeColour
+        val pulse         = if resonating then 0.12 + 0.08 * math.sin(time / 80.0) else 0.0
+        for centre <- Seq(bossPosition, shadePosition) do
           circle(
             centre,
             Resonance.range / 2,
             Some(colour.withAlpha(0.05 + pulse)),
-            Some((2, colour.withAlpha(if (resonating) 0.9 else 0.35)))
+            Some((2, colour.withAlpha(if resonating then 0.9 else 0.35)))
           )
         line(
           bossPosition,
           shadePosition,
-          if (resonating) 5 else 2,
-          colour.withAlpha(if (resonating) 0.9 else 0.3)
+          if resonating then 5 else 2,
+          colour.withAlpha(if resonating then 0.9 else 0.3)
         )
       }
 
       // Ring: cyan while bonded to its Shade, orange and pulsing when exposed
       val ringRadius = boss.shape.radius + 6
-      if (gameState.hasBuffOfType[Mourning](boss.id))
+      if gameState.hasBuffOfType[Mourning](boss.id) then
         circle(
           bossPosition,
           ringRadius + 3 * math.sin(time / 120.0),
           Some(exposedColour.withAlpha(0.2)),
           Some((5, exposedColour))
         )
-      else if (gameState.hasBuffOfType[TwinBond](boss.id))
+      else if gameState.hasBuffOfType[TwinBond](boss.id) then
         circle(bossPosition, ringRadius, None, Some((4, bondColour.withAlpha(0.9))))
 
       // The Skewer's beam, from the boss through its target up to the wall, while it is cast
-      for {
+      for
         info <- casting(p, boss.id)
         case skewer: Skewer <- Some(info.ability)
         target <- gameState.players.get(skewer.targetId)
         direction = (position(target) - bossPosition).safeNormalized
         if direction.modulus2 > 0
-      } {
+      do {
         def toWall(from: Double, speed: Double) =
-          if (speed > 1e-9) (Boss105.size - from) / speed
-          else if (speed < -1e-9) (-Boss105.size - from) / speed
+          if speed > 1e-9 then (Boss105.size - from) / speed
+          else if speed < -1e-9 then (-Boss105.size - from) / speed
           else Double.MaxValue
         val length = math.max(
           0.0,
@@ -102,18 +102,18 @@ object Boss105Visuals extends BossVisuals {
             gameState.allTEntities[Shade].keys.exists(gameState.hasBuffOfType[Yearning](_))
           )(0.7)
         )
-      for {
+      for
         alpha <- reunionAlpha
         shade <- gameState.allTEntities[Shade].values.headOption
-      }
+      do
         line(bossPosition, position(shade), 6, shadeColour.withAlpha(alpha))
     }
 
     // The explosion radius of the charges, filling up until they explode
-    for {
+    for
       charge <- gameState.allTBuffs[VolatileCharge]
       bearer <- gameState.players.get(charge.bearerId)
-    } {
+    do {
       val elapsed = chargeElapsed(gameState, charge)
       circle(
         position(bearer),
@@ -129,7 +129,7 @@ object Boss105Visuals extends BossVisuals {
     }
 
     // Where the Shade comes back, more and more solid until it is back
-    for (point <- gameState.allTEntities[ReformationPoint].values) {
+    for point <- gameState.allTEntities[ReformationPoint].values do {
       val elapsed = gameState
         .allTBuffs[Mourning]
         .headOption
@@ -153,13 +153,13 @@ object Boss105Visuals extends BossVisuals {
   /** The Shade (outlined in white when it yearns for the boss), and the drain of its Siphon. */
   def adds(p: Painter): Unit = {
     import p.*
-    for (shade <- gameState.allTEntities[Shade].values) {
+    for shade <- gameState.allTEntities[Shade].values do {
       val yearning = gameState.hasBuffOfType[Yearning](shade.id)
-      for {
+      for
         info <- casting(p, shade.id)
         case siphon: Siphon <- Some(info.ability)
         target <- gameState.players.get(siphon.targetId)
-      } line(
+      do line(
         position(shade),
         position(target),
         3,
@@ -168,7 +168,7 @@ object Boss105Visuals extends BossVisuals {
       shape(
         shade,
         Some(shadeColour.withAlpha(0.55)),
-        Some((if (yearning) 4 else 2, if (yearning) Paint(1, 1, 1) else Paint(0, 0, 0)))
+        Some((if yearning then 4 else 2, if yearning then Paint(1, 1, 1) else Paint(0, 0, 0)))
       )
       withBars(p, shade)
     }

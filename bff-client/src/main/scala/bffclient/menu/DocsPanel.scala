@@ -39,7 +39,7 @@ final class DocsPanel {
       tab = chosen; scroll = 0
     }
     val chooserRect = Rect(panel.x + 76, panel.y + 52, panel.width - 88, 34)
-    if (tab == "Boss") {
+    if tab == "Boss" then {
       ui.text("Boss", panel.x + 16, panel.y + 58, colour = Theme.muted)
       changeBoss match {
         case Some(change) =>
@@ -54,12 +54,12 @@ final class DocsPanel {
         }
     }
     val area = Rect(panel.x + 1, panel.y + 96, panel.width - 2, panel.height - 104)
-    if (ui.hovered(area))
+    if ui.hovered(area) then
       scroll = math.max(0.0, math.min(scroll - ui.wheel * 40, contentHeight - area.height))
     ui.clipped(area) {
       val top = area.y - scroll
       val end =
-        if (tab == "Boss")
+        if tab == "Boss" then
           BossMetadata.maybeMetadataByName(bossName).fold(top)(metadata =>
             docs(
               ui,
@@ -80,14 +80,14 @@ final class DocsPanel {
             top,
             area.width - 30,
             s"${builder.initialMaxLife.toInt} life points, ${resource.amount.toInt} ${resource.resourceType.toString.toLowerCase}" +
-              (if (myClass.contains(shownClass(myClass))) " (your class)" else ""),
+              (if myClass.contains(shownClass(myClass)) then " (your class)" else ""),
             builder.description,
             builder.abilitiesDoc
           )
         }
       contentHeight = end + scroll - area.y + 8
     }
-    if (contentHeight > area.height) // there is more: a scroll bar
+    if contentHeight > area.height then // there is more: a scroll bar
       ui.fill(
         Rect(
           area.right - 5,
@@ -120,10 +120,10 @@ final class DocsPanel {
       .groupBy(_.caster.get)
       .toVector
       .sortBy((caster, _) => adds.indexWhere(_.caster.contains(caster)))
-    for ((title, docs) <- ("Abilities" -> own) +: byCaster if docs.nonEmpty) {
+    for (title, docs) <- ("Abilities" -> own) +: byCaster if docs.nonEmpty do {
       ui.text(title, x, y, Theme.body, Theme.text)
       y += 24
-      for (doc <- docs) {
+      for doc <- docs do {
         val textLeft = Sprites.abilityIcons.get(doc.abilityId) match {
           case Some(icon) =>
             Graphics.setColor(1, 1, 1)

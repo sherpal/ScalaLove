@@ -20,18 +20,18 @@ object Boss102Visuals extends BossVisuals {
 
   def ground(p: Painter): Unit = {
     import p.*
-    for (zone <- gameState.allTEntities[DamageZone].values) {
+    for zone <- gameState.allTEntities[DamageZone].values do {
       circle(zone.pos, DamageZone.radius, Some(Paint(0, 1, 0, 0.5)))
-      for (sprite <- Sprites.damageZone) {
+      for sprite <- Sprites.damageZone do {
         val (x, y) = toScreen(zone.pos)
         Graphics.setColor(0.5, 0.5, 0, 0.3) // olive
         sprite.draw(x, y, 0, DamageZone.radius * 4, frame = ((now / 100) % sprite.frameCount).toInt)
       }
     }
-    for {
+    for
       (id, player) <- gameState.players
       if gameState.allBuffsOfEntity(id).exists(_.isInstanceOf[LivingDamageZone])
-    } Sprites.livingDamageZone match {
+    do Sprites.livingDamageZone match {
       case Some(sprite) =>
         val (x, y) = toScreen(position(player))
         Graphics.setColor(1, 1, 1, 0.3)
@@ -53,7 +53,7 @@ object Boss102Visuals extends BossVisuals {
   }
 
   def adds(p: Painter): Unit =
-    for (hound <- p.gameState.allTEntities[BossHound].values) {
+    for hound <- p.gameState.allTEntities[BossHound].values do {
       p.shape(hound, Some(addColour.withAlpha(0.3)), Some((2, addColour)))
       withBars(p, hound)
     }
