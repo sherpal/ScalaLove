@@ -67,6 +67,14 @@ final class Renderer(client: GameClient) {
 
     Graphics.setBackgroundColor(200 / 255.0, 200 / 255.0, 200 / 255.0)
 
+    // The aztec diamond, as in the Indigo frontend: twice its size, centred on the origin, half
+    // transparent over the grey
+    for (background <- Sprites.aztecDiamond) {
+      val (x, y) = toScreen(Complex.zero)
+      Graphics.setColor(1, 1, 1, 0.5)
+      background.draw(x, y, 0, background.frameWidth * 2)
+    }
+
     // Origin, as in the Indigo frontend
     val (ox, oy) = toScreen(Complex.zero)
     Graphics.setColor(1, 1, 1)

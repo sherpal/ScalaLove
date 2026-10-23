@@ -113,7 +113,8 @@ val bffImages = Seq(
   "abilities/player-casting-ability-animation.png",
   "abilities/cleave-animation.png",
   "abilities/sword.png",
-  "misc/small-lock.png"
+  "misc/small-lock.png",
+  "background/aztec-diamond.png"
 ) ++ Seq( // the icons of the abilities
   "hexagon-hot",
   "hexagon-flash-heal",

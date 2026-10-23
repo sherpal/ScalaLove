@@ -79,6 +79,9 @@ object Sprites {
   lazy val livingDamageZone: Option[Sprite] =
     load("boss/dawn-of-time/boss102/living-damage-zone-animation.png", rows = 3, columns = 5)
 
+  /** The arena's background (2000 x 2000). */
+  lazy val aztecDiamond: Option[Sprite] = load("background/aztec-diamond.png")
+
   /** On the target frame, when we face our target. */
   lazy val smallLock: Option[Sprite] = load("misc/small-lock.png")
 
