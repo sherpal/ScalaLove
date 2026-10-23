@@ -8,13 +8,12 @@ import org.scalajs.ir.WellKnownNames.*
 import org.scalajs.linker.standard.{ModuleSet, SymbolRequirement}
 
 /** Lua functions returning multiple values.
- *
- *  A facade method declared with a Scala tuple as result type, e.g.
- *  `def getDimensions(): (Int, Int) = js.native`, is compiled by Scala.js to a
- *  JS call followed by a cast to `scala.Tuple2`. We emit that pattern as
- *  `R.tuple(C.scala_Tuple2, <ctor>, love.graphics.getDimensions())`, which
- *  packs all the values returned by the Lua function into a tuple.
- */
+  *
+  * A facade method declared with a Scala tuple as result type, e.g. `def getDimensions(): (Int,
+  * Int) = js.native`, is compiled by Scala.js to a JS call followed by a cast to `scala.Tuple2`. We
+  * emit that pattern as `R.tuple(C.scala_Tuple2, <ctor>, love.graphics.getDimensions())`, which
+  * packs all the values returned by the Lua function into a tuple.
+  */
 object MultipleReturns {
   val MaxArity = 22
 
@@ -26,7 +25,8 @@ object MultipleReturns {
   /** The arity of `cls` if it is one of the `scala.TupleN` classes. */
   def tupleArity(cls: ClassName): Option[Int] = {
     val name = cls.nameString
-    if (name.startsWith("scala.Tuple")) name.stripPrefix("scala.Tuple").toIntOption.filter(n => n >= 1 && n <= MaxArity)
+    if (name.startsWith("scala.Tuple"))
+      name.stripPrefix("scala.Tuple").toIntOption.filter(n => n >= 1 && n <= MaxArity)
     else None
   }
 
@@ -40,7 +40,7 @@ object MultipleReturns {
 
   /** Arities of the multiple-return calls in the linked program. */
   def aritiesUsed(moduleSet: ModuleSet): Set[Int] = {
-    var arities = Set.empty[Int]
+    var arities   = Set.empty[Int]
     val traverser = new Traverser {
       override def traverse(tree: Tree): Unit = {
         tree match {
@@ -51,7 +51,12 @@ object MultipleReturns {
         super.traverse(tree)
       }
     }
-    for (module <- moduleSet.modules; c <- module.classDefs; m <- c.methods; body <- m.body)
+    for {
+      module <- moduleSet.modules
+      c      <- module.classDefs
+      m      <- c.methods
+      body   <- m.body
+    }
       traverser.traverse(body)
     arities
   }
@@ -59,6 +64,8 @@ object MultipleReturns {
   /** Requirements so that the tuple classes of these arities can be instantiated by the runtime. */
   def requirements(arities: Set[Int]): SymbolRequirement = {
     val factory = SymbolRequirement.factory("lua-multiple-returns")
-    factory.multiple(arities.toList.map(n => factory.instantiateClass(tupleClass(n), tupleConstructor(n)))*)
+    factory.multiple(
+      arities.toList.map(n => factory.instantiateClass(tupleClass(n), tupleConstructor(n)))*
+    )
   }
 }

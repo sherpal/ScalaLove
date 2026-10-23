@@ -34,9 +34,13 @@ object MakeGameInfo {
 
   def main(args: Array[String]): Unit = {
     val gameId +: gameSecret +: bossName +: players = args.toVector: @unchecked
-    val parsed = players.map { p =>
+    val parsed                                      = players.map { p =>
       val Array(name, cls, secret) = p.split(":"): @unchecked
-      (name, PlayerClasses.playerClassByName(cls).getOrElse(sys.error(s"Unknown class $cls")), secret)
+      (
+        name,
+        PlayerClasses.playerClassByName(cls).getOrElse(sys.error(s"Unknown class $cls")),
+        secret
+      )
     }
     val playersInfo = parsed.map { (name, cls, _) =>
       name -> PlayerInfo(
@@ -48,7 +52,7 @@ object MakeGameInfo {
       )
     }.toMap
     val users = parsed.map((name, _, _) => User(name))
-    val game = MenuGame(
+    val game  = MenuGame(
       gameId,
       "ScalaLove test game",
       None,

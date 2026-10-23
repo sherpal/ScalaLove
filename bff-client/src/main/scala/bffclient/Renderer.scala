@@ -16,8 +16,8 @@ import gamelogic.physics.Complex
 import gamelogic.physics.shape.{Circle, Polygon}
 import bffclient.ui.{Colour as Paint, Rect}
 
-/** Draws the client-side game state with love.graphics, like the Indigo frontend's drawers:
-  * camera centred on our player (y axis pointing up), obstacles, what is specific to the boss
+/** Draws the client-side game state with love.graphics, like the Indigo frontend's drawers: camera
+  * centred on our player (y axis pointing up), obstacles, what is specific to the boss
   * (`BossVisuals`), zones, boss, players, and every other body as an outline.
   */
 final class Renderer(client: GameClient) {
@@ -38,11 +38,14 @@ final class Renderer(client: GameClient) {
     toWorld(mouse.x, mouse.y)
   }
 
-  private val abilityNamesCache = scala.collection.mutable.Map.empty[String, Map[Ability.AbilityId, String]]
+  private val abilityNamesCache =
+    scala.collection.mutable.Map.empty[String, Map[Ability.AbilityId, String]]
 
   private def abilityNames(player: PlayerClass): Map[Ability.AbilityId, String] =
-    abilityNamesCache.getOrElseUpdate(player.cls.value,
-      player.cls.builder.abilitiesDoc.map(doc => doc.abilityId -> doc.name).toMap)
+    abilityNamesCache.getOrElseUpdate(
+      player.cls.value,
+      player.cls.builder.abilitiesDoc.map(doc => doc.abilityId -> doc.name).toMap
+    )
 
   def draw(): Unit = {
     val gameState = client.gameState
@@ -53,11 +56,13 @@ final class Renderer(client: GameClient) {
 
     // Camera: our player, or the boss once we are dead
     val me = client.myId.flatMap(gameState.players.get)
-    cameraPosition = me.map(_.currentPosition(now))
+    cameraPosition = me
+      .map(_.currentPosition(now))
       .orElse(gameState.bosses.values.headOption.map(client.smoothing.position(_, now)))
       .getOrElse(cameraPosition)
 
-    val painter = new Painter(gameState, now, cameraPosition, screen.width, screen.height, client.smoothing)
+    val painter =
+      new Painter(gameState, now, cameraPosition, screen.width, screen.height, client.smoothing)
     import painter.*
 
     Graphics.setBackgroundColor(200 / 255.0, 200 / 255.0, 200 / 255.0)
@@ -87,13 +92,15 @@ final class Renderer(client: GameClient) {
     // Other bodies (zones, bullets, adds, ...)
     for (case body: Body <- entities) body match {
       case _: Obstacle | _: BossEntity | _: PlayerClass => ()
-      case drawn if BossVisuals.draws(drawn)           => ()
+      case drawn if BossVisuals.draws(drawn) => ()
       case zone: HexagonZone =>
         ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
-        ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line"); Graphics.setLineWidth(1)
+        ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line");
+        Graphics.setLineWidth(1)
       case zone: PentagonZone =>
         ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
-        ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line"); Graphics.setLineWidth(1)
+        ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line");
+        Graphics.setLineWidth(1)
       case bullet: PentagonBullet =>
         ownerColour(RGBColour.fromIntColour(bullet.colour), 1)
         drawShape(bullet, "fill")
@@ -104,7 +111,7 @@ final class Renderer(client: GameClient) {
           case living: LivingEntity =>
             lifeBar(living.asInstanceOf[LivingEntity & Body])
             buffIcons(living.asInstanceOf[LivingEntity & Body])
-          case _                    => ()
+          case _ => ()
         }
     }
 
@@ -133,7 +140,8 @@ final class Renderer(client: GameClient) {
         Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0)
         val frame = ((now / 50) % sprite.frameCount).toInt
         for (side <- Seq(1, -1)) {
-          val angle  = rotation(player) + Angle.fromDouble(side * 2 * math.Pi / player.shape.vertices.length)
+          val angle =
+            rotation(player) + Angle.fromDouble(side * 2 * math.Pi / player.shape.vertices.length)
           val (x, y) = toScreen(position(player) + Complex.polar(player.shape.radius, angle))
           sprite.draw(x, y, 0, 16, frame = frame)
         }
@@ -147,7 +155,9 @@ final class Renderer(client: GameClient) {
           val (x, y) = toScreen(position(player))
           Graphics.setColor(r / 255.0, g / 255.0, b / 255.0)
           sprite.draw(x, y, rotation(player).value, 2 * player.shape.radius)
-          val (noseX, noseY) = toScreen(position(player) + Complex.polar(player.shape.radius, rotation(player)))
+          val (noseX, noseY) = toScreen(
+            position(player) + Complex.polar(player.shape.radius, rotation(player))
+          )
           Graphics.setColor(1, 1, 1)
           Graphics.circle("fill", noseX, noseY, 2)
         case None =>
@@ -170,7 +180,10 @@ final class Renderer(client: GameClient) {
     )
 
     // Target
-    for (id <- client.currentTarget; case target: Body <- gameState.entities.get(id)) {
+    for {
+      id <- client.currentTarget
+      case target: Body <- gameState.entities.get(id)
+    } {
       val (x, y) = toScreen(position(target))
       if (client.lockInToTarget) Graphics.setColor(1, 0.3, 0) else Graphics.setColor(1, 0.85, 0)
       Graphics.setLineWidth(2)
@@ -214,7 +227,10 @@ final class Renderer(client: GameClient) {
     * top during its cooldown, like the frontend's), key, name and remaining cooldown.
     */
   private def actionBar(gameState: GameState, now: Long, width: Int, height: Int): Unit =
-    for (id <- client.myId; me <- gameState.players.get(id)) {
+    for {
+      id <- client.myId
+      me <- gameState.players.get(id)
+    } {
       import HudStyle.*
       val names     = abilityNames(me)
       val abilities = me.abilities.toArray
@@ -227,29 +243,61 @@ final class Renderer(client: GameClient) {
         val cooldown = used.map(u => u.time + u.cooldown - now).filter(_ > 0)
         panel(rect)
         // The colour of the ability, as a line at the bottom
-        roundedFill(Rect(rect.x + 6, rect.bottom - 5, rect.width - 12, 2), 1, softened(Ability.abilityColour(abilityId)))
+        roundedFill(
+          Rect(rect.x + 6, rect.bottom - 5, rect.width - 12, 2),
+          1,
+          softened(Ability.abilityColour(abilityId))
+        )
         val textLeft = Sprites.abilityIcons.get(abilityId) match {
           case Some(icon) =>
             val iconTop = rect.y + 5 + (if (used.exists(u => now - u.time < 100)) 3 else 0)
             Graphics.setColor(1, 1, 1)
             icon.draw(rect.x + 22, iconTop + 16, 0, 32, 32)
-            for (remaining <- cooldown; u <- used) {
+            for {
+              remaining <- cooldown
+              u         <- used
+            } {
               Graphics.setColor(0, 0, 0, 0.55)
-              Graphics.rectangle("fill", rect.x + 6, iconTop, 32, 32 * remaining / u.cooldown.toDouble)
+              Graphics.rectangle(
+                "fill",
+                rect.x + 6,
+                iconTop,
+                32,
+                32 * remaining / u.cooldown.toDouble
+              )
             }
             // A thin dark border, so that the (often white) icons do not glare on the panels
             roundedLine(Rect(rect.x + 5, iconTop - 1, 34, 34), 3, Paint(0, 0, 0, 0.85), 2)
             rect.x + 42
           case None =>
-            for (remaining <- cooldown; u <- used)
-              roundedFill(Rect(rect.x, rect.y, rect.width * remaining / u.cooldown.toDouble, rect.height), 6,
-                Paint(0, 0, 0, 0.45))
+            for {
+              remaining <- cooldown
+              u         <- used
+            }
+              roundedFill(
+                Rect(rect.x, rect.y, rect.width * remaining / u.cooldown.toDouble, rect.height),
+                6,
+                Paint(0, 0, 0, 0.45)
+              )
             rect.x + 2
         }
         val keyLabel = client.controls.abilityKeys.lift(i).fold("-")(_.label)
-        text(keyLabel, Rect(textLeft, rect.y + 4, rect.right - textLeft - 2, 16), colour = mutedColour)
-        text(names.getOrElse(abilityId, s"#$abilityId"), Rect(textLeft, rect.y + 19, rect.right - textLeft - 2, 18))
-        cooldown.foreach(r => text(f"${r / 1000.0}%.1f", Rect(textLeft, rect.y + 4, rect.right - textLeft - 2, 16), "right"))
+        text(
+          keyLabel,
+          Rect(textLeft, rect.y + 4, rect.right - textLeft - 2, 16),
+          colour = mutedColour
+        )
+        text(
+          names.getOrElse(abilityId, s"#$abilityId"),
+          Rect(textLeft, rect.y + 19, rect.right - textLeft - 2, 18)
+        )
+        cooldown.foreach(r =>
+          text(
+            f"${r / 1000.0}%.1f",
+            Rect(textLeft, rect.y + 4, rect.right - textLeft - 2, 16),
+            "right"
+          )
+        )
       }
     }
 
@@ -261,14 +309,21 @@ final class Renderer(client: GameClient) {
     Graphics.print(
       s"Move: ${c.upKey.label} ${c.leftKey.label} ${c.downKey.label} ${c.rightKey.label}   " +
         s"Next target: ${c.nextTargetKey.label} (or click)   " +
-        s"Face target: ${c.targetLockInToggleKey.label} (${if (client.lockInToTarget) "on" else "off"})   " +
-          s"Mouse over: ${if (c.mouseOverEnabled) "on" else "off"}   Escape: menu",
-      10, 90)
-    val target = client.currentTarget.flatMap(gameState.entities.get).collect { case l: LivingEntity => l }
+        s"Face target: ${c.targetLockInToggleKey.label} (${
+            if (client.lockInToTarget) "on"
+            else "off"
+          })   " +
+        s"Mouse over: ${if (c.mouseOverEnabled) "on" else "off"}   Escape: menu",
+      10,
+      90
+    )
+    val target = client.currentTarget
+      .flatMap(gameState.entities.get)
+      .collect { case l: LivingEntity => l }
       .fold("Target: none") { t =>
         val name = t match {
           case named: WithName => named.name
-          case other           => other.getClass.getSimpleName
+          case other => other.getClass.getSimpleName
         }
         s"Target: $name (${math.round(t.life)} / ${math.round(t.maxLife)})"
       }
@@ -277,7 +332,7 @@ final class Renderer(client: GameClient) {
     Graphics.print(client.controlsInfo, 10, 126)
     Graphics.setColor(0, 0, 0)
     val message =
-      if (gameState.ended) (if (gameState.playersWon) "Victory!" else "Defeat...")
+      if (gameState.ended) if (gameState.playersWon) "Victory!" else "Defeat..."
       else if (!gameState.started) "Waiting for the game to start..."
       else ""
     if (message.nonEmpty) Graphics.printf(message, 0, 170, width, "center")

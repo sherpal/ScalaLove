@@ -29,12 +29,14 @@ import bffclient.ui.Ui
 object Main {
   given ExecutionContext = ExecutionContext.global
 
-  private def env(name: String, default: String): String = Option(Os.getenv(name)).getOrElse(default)
+  private def env(name: String, default: String): String =
+    Option(Os.getenv(name)).getOrElse(default)
 
   /** In a window, starts with the menus' UI, where the player types the menu server's address
-    * (BFF_MENU_URL, e.g. http://127.0.0.1:9000, fills it in). Headless, plays the menus with a script
-    * (BFF_MENU_URL, BFF_USER, BFF_CLASS, BFF_BOSS). With BFF_HOST (or headless without BFF_MENU_URL),
-    * connects directly to a game server (BFF_HOST, BFF_PORT, BFF_SECRET, BFF_GAME_ID).
+    * (BFF_MENU_URL, e.g. http://127.0.0.1:9000, fills it in). Headless, plays the menus with a
+    * script (BFF_MENU_URL, BFF_USER, BFF_CLASS, BFF_BOSS). With BFF_HOST (or headless without
+    * BFF_MENU_URL), connects directly to a game server (BFF_HOST, BFF_PORT, BFF_SECRET,
+    * BFF_GAME_ID).
     */
   def main(args: Array[String]): Unit = {
     val user     = env("BFF_USER", "alice")
@@ -42,10 +44,13 @@ object Main {
     val menuUrl  = Option(Os.getenv("BFF_MENU_URL"))
     menuUrl match {
       case Some(url) if headless =>
-        val (host, port) = MenuApi.parseAddress(url).fold(message => sys.error(s"BFF_MENU_URL: $message"), identity)
+        val (host, port) =
+          MenuApi.parseAddress(url).fold(message => sys.error(s"BFF_MENU_URL: $message"), identity)
         val api         = new MenuApi(host, port)
-        val playerClass = PlayerClasses.playerClassByName(env("BFF_CLASS", "Triangle")).getOrElse(PlayerClasses.Triangle)
-        val menu        = new MenuSession(api, user, playerClass, env("BFF_BOSS", "Boss 101"))
+        val playerClass = PlayerClasses
+          .playerClassByName(env("BFF_CLASS", "Triangle"))
+          .getOrElse(PlayerClasses.Triangle)
+        val menu = new MenuSession(api, user, playerClass, env("BFF_BOSS", "Boss 101"))
         menu.run().onComplete {
           case Success(access) => startGame(access, headless)
           case Failure(error) =>
@@ -54,19 +59,31 @@ object Main {
         }
       case None if headless || Os.getenv("BFF_HOST") != null =>
         startGame(
-          GameAccess(env("BFF_HOST", "localhost"), env("BFF_PORT", "22223").toInt, user,
-            env("BFF_GAME_ID", "game"), env("BFF_SECRET", "secret")),
+          GameAccess(
+            env("BFF_HOST", "localhost"),
+            env("BFF_PORT", "22223").toInt,
+            user,
+            env("BFF_GAME_ID", "game"),
+            env("BFF_SECRET", "secret")
+          ),
           headless
         )
       case _ =>
-        new MenuApp(menuUrl, (access, backToMenus) => startGame(access, headless, Some(backToMenus))).install()
+        new MenuApp(
+          menuUrl,
+          (access, backToMenus) => startGame(access, headless, Some(backToMenus))
+        ).install()
     }
   }
 
   /** Connects to the game server and runs the game. When the game was joined through the menus,
     * `backToMenus` goes back to them.
     */
-  def startGame(access: GameAccess, headless: Boolean, backToMenus: Option[GameExit => Unit] = None): Unit = {
+  def startGame(
+      access: GameAccess,
+      headless: Boolean,
+      backToMenus: Option[GameExit => Unit] = None
+  ): Unit = {
     val url = s"ws://${access.host}:${access.port}/ws/connect" +
       s"?userName=${access.userName}&secret=${access.secret}&gameId=${access.gameId}"
     println(s"Connecting to $url")
@@ -75,7 +92,7 @@ object Main {
       println(s"Connection failed: ${connection.error}")
       backToMenus match {
         case Some(back) => back(GameExit.CannotConnect(connection.error))
-        case None       => Event.quit(1)
+        case None => Event.quit(1)
       }
     } else {
       println("Connected")
@@ -84,19 +101,38 @@ object Main {
       val lag = env("BFF_LAG_MS", "0").toDouble / 1000
       if (lag > 0) println(s"Simulated latency: ${lag * 1000} ms round trip")
       if headless then {
-        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => Complex.zero,
-          () => None, lag)
+        val client = new GameClient(
+          connection.socket,
+          access.userName,
+          headless,
+          controls,
+          controlsInfo,
+          () => Complex.zero,
+          () => None,
+          lag
+        )
         Love.update = dt => client.update(dt)
       } else {
         var renderer: Renderer = null
-        val client = new GameClient(connection.socket, access.userName, headless, controls, controlsInfo, () => renderer.mouseWorld,
-          () => renderer.hud.hovered, lag)
+        val client             = new GameClient(
+          connection.socket,
+          access.userName,
+          headless,
+          controls,
+          controlsInfo,
+          () => renderer.mouseWorld,
+          () => renderer.hud.hovered,
+          lag
+        )
         renderer = new Renderer(client)
         // While an overlay is shown (game menu, end of game), the inputs go to it
-        val ui          = new Ui
-        val leave       = backToMenus.map(back => () => { val exit = client.exit; client.leave(); back(exit) })
-        val gameMenu    = new GameMenu(client, leave)
-        val endOfGame   = new EndOfGame(client, leave)
+        val ui    = new Ui
+        val leave =
+          backToMenus.map { back => () =>
+            val exit = client.exit; client.leave(); back(exit)
+          }
+        val gameMenu     = new GameMenu(client, leave)
+        val endOfGame    = new EndOfGame(client, leave)
         def overlayShown = client.finished || client.menuOpen
         Love.update = dt => client.update(dt)
         Love.draw = () => {
@@ -111,11 +147,12 @@ object Main {
           if (overlayShown) ui.mousePressed(x, y, button)
           else if (button == 1) renderer.hud.targetAt(x, y) match {
             case Some(id) => client.selectTarget(id) // a frame of the HUD
-            case None     => client.clicked(renderer.toWorld(x, y))
+            case None => client.clicked(renderer.toWorld(x, y))
           }
         Love.mousereleased = (x, y, button, _, _) =>
           if (overlayShown) ui.mouseReleased(x, y, button)
-          else if (button != 1) client.mouseButtonReleased(button) // the left one targets and places zones
+          else if (button != 1)
+            client.mouseButtonReleased(button) // the left one targets and places zones
       }
     }
   }
@@ -130,7 +167,9 @@ final class GameClient(
     mouseWorld: () => Complex,
     /** The entity whose frame (in the HUD) is under the mouse. */
     hovered: () => Option[Entity.Id],
-    /** Simulated round trip latency in seconds (BFF_LAG_MS), half on each way, to try the prediction. */
+    /** Simulated round trip latency in seconds (BFF_LAG_MS), half on each way, to try the
+      * prediction.
+      */
     lag: Double = 0
 ) {
   private val incoming = scala.collection.mutable.Queue.empty[(Double, String)]
@@ -150,7 +189,6 @@ final class GameClient(
   private var scriptedMovements           = 0
   private var scriptedDirection           = Complex.zero
 
-
   /** Whether the player faces its target (instead of the mouse), toggled by `ToggleTargetLockIn`.
     */
   var lockInToTarget = false
@@ -162,12 +200,14 @@ final class GameClient(
   private var lastError: Option[(String, Double)] = None
   private var castsSent                           = 0
   private val recentTargets = scala.collection.mutable.Map.empty[Entity.Id, Double]
-  /** Our last movement, shown before the server echoes it (the frontend's "unconfirmed actions"). */
+
+  /** Our last movement, shown before the server echoes it (the frontend's "unconfirmed actions").
+    */
   private var predictedMovement: Option[MovingBodyMoves] = None
   private var lastRotationSent: Option[Double]           = None
   private var lastMovementSentAt                         = 0L
   private var projectedState: GameState                  = GameState.empty
-  private var lastScriptedCast                                    = 0.0
+  private var lastScriptedCast                           = 0.0
 
   /** The message of the last refused cast, for 2 seconds. */
   def errorMessage: Option[String] = lastError.collect {
@@ -215,7 +255,9 @@ final class GameClient(
     LoveInput.inputCode(scancode).map(controls.getOrUnknown).foreach(handleInput)
 
   /** Mouse buttons can be bound in the controls too (`button` is LÖVE's number). */
-  def mouseButtonReleased(button: Int): Unit = handleInput(controls.getOrUnknown(LoveInput.mouseCode(button)))
+  def mouseButtonReleased(button: Int): Unit = handleInput(
+    controls.getOrUnknown(LoveInput.mouseCode(button))
+  )
 
   def handleInput(input: UserInput): Unit = input match {
     case abilityInput: UserInput.AbilityInput =>
@@ -226,8 +268,17 @@ final class GameClient(
         me <- gameState.players.get(id)
       } abilityInput.abilityId(me) match {
         case Some(abilityId) =>
-          request(c.cast(abilityId, me, gameState, serverNow, currentTarget, mouseWorld(),
-            if (controls.mouseOverEnabled) hovered() else None))
+          request(
+            c.cast(
+              abilityId,
+              me,
+              gameState,
+              serverNow,
+              currentTarget,
+              mouseWorld(),
+              if (controls.mouseOverEnabled) hovered() else None
+            )
+          )
         case None =>
           request(CastRequest.Error(s"No ability on input ${abilityInput.abilityIndex + 1}"))
       }
@@ -307,14 +358,22 @@ final class GameClient(
   private def measureBossJumps(): Unit =
     for (boss <- gameState.bosses.values.headOption) {
       val now     = serverNow
-      val current = (boss.currentPosition(now), smoothing.position(boss, now), boss.rotation.value,
-        smoothing.rotation(boss).value)
+      val current = (
+        boss.currentPosition(now),
+        smoothing.position(boss, now),
+        boss.rotation.value,
+        smoothing.rotation(boss).value
+      )
       for ((raw, shown, rawRotation, shownRotation) <- previousBoss) {
         def turn(from: Double, to: Double) = math.abs(Smoothing.shortestAngle(to - from))
-        largestBossJumps = (math.max(largestBossJumps._1, (current._1 - raw).modulus),
-          math.max(largestBossJumps._2, (current._2 - shown).modulus))
-        largestBossTurns = (math.max(largestBossTurns._1, turn(rawRotation, current._3)),
-          math.max(largestBossTurns._2, turn(shownRotation, current._4)))
+        largestBossJumps = (
+          math.max(largestBossJumps._1, (current._1 - raw).modulus),
+          math.max(largestBossJumps._2, (current._2 - shown).modulus)
+        )
+        largestBossTurns = (
+          math.max(largestBossTurns._1, turn(rawRotation, current._3)),
+          math.max(largestBossTurns._2, turn(shownRotation, current._4))
+        )
       }
       previousBoss = Some(current)
     }
@@ -366,7 +425,9 @@ final class GameClient(
       val (_, message) = incoming.dequeue()
       bytesReceived += message.length
       messagesReceived += 1
-      handle(Unpickle[InGameWSProtocol].fromBytes(ByteBuffer.wrap(ScalaLove.stringToBytes(message))))
+      handle(
+        Unpickle[InGameWSProtocol].fromBytes(ByteBuffer.wrap(ScalaLove.stringToBytes(message)))
+      )
     }
     while (outgoing.nonEmpty && outgoing.head._1 <= elapsed) ws.send(outgoing.dequeue()._2)
 
@@ -418,16 +479,16 @@ final class GameClient(
       }.toSet
       val now      = serverNow
       val position = me.currentPosition(now)
-      val facing = (for {
+      val facing   = (for {
         targetId <- currentTarget if lockInToTarget
         case target: Body <- gameState.entities.get(targetId)
       } yield target.currentPosition(now) - position).getOrElse(mouseWorld() - position)
       move(UserInput.movingDirection(held), facing, dt)
     }
 
-  /** Moves our player for this frame, like the frontend: the new position is computed here (with the
-    * obstacles), sent to the server, and shown right away on top of the server's game state, without
-    * waiting for the server to echo it (one round trip later).
+  /** Moves our player for this frame, like the frontend: the new position is computed here (with
+    * the obstacles), sent to the server, and shown right away on top of the server's game state,
+    * without waiting for the server to echo it (one round trip later).
     */
   private def move(direction: Complex, facing: Complex, dt: Double): Unit =
     for {
@@ -437,24 +498,37 @@ final class GameClient(
       val now       = serverNow
       val moving    = direction != Complex.zero
       val obstacles = gameState.obstacles.values
-      val position =
+      val position  =
         if (moving) {
           // At most 100 ms, so that a long frame does not make us jump
           val step   = me.speed * math.min(dt, 0.1) * Complex.rotation(direction.arg)
           val target = me.pos + step // our previous frame (predicted) position
           // BFF's lastValidPosition ignores moves under 2 units, which are common at high frame rates
           if (step.modulus >= 2) me.lastValidPosition(target, obstacles)
-          else if (obstacles.exists(o => o.shape.collides(o.pos, o.rotation, me.shape, target, me.rotation))) me.pos
+          else if (
+            obstacles
+              .exists(o => o.shape.collides(o.pos, o.rotation, me.shape, target, me.rotation))
+          ) me.pos
           else target
         } else me.currentPosition(now, obstacles)
-      val action = MovingBodyMoves(GameAction.Id.zero, now, id, position,
-        if (moving) direction.arg else me.direction, facing.arg, me.speed, moving)
+      val action = MovingBodyMoves(
+        GameAction.Id.zero,
+        now,
+        id,
+        position,
+        if (moving) direction.arg else me.direction,
+        facing.arg,
+        me.speed,
+        moving
+      )
       // Sent when starting, stopping, turning or changing direction, and about 60 times per second
       // while moving (the rotation is rounded, so that tiny mouse moves do not flood the server)
       val rotation         = math.round(facing.arg.value * 50) / 50.0
       val directionChanged = moving && me.direction != action.direction
-      if (moving != me.moving || directionChanged || !lastRotationSent.contains(rotation) ||
-          (moving && now - lastMovementSentAt >= 16)) {
+      if (
+        moving != me.moving || directionChanged || !lastRotationSent.contains(rotation) ||
+        (moving && now - lastMovementSentAt >= 16)
+      ) {
         lastRotationSent = Some(rotation)
         lastMovementSentAt = now
         send(GameActionWrapper(Vector(action)))
@@ -504,8 +578,9 @@ final class GameClient(
     val bosses =
       gameState.bosses.values.map(b => s"${b.name} life=${math.round(b.life)}").mkString(", ")
     def show(z: Complex) = s"(${math.round(z.re)}, ${math.round(z.im)})"
-    val me = myId.flatMap(gameState.players.get).fold("-") { p =>
-      val server = myId.flatMap(serverGameState.players.get).fold("-")(s => show(s.currentPosition(serverNow)))
+    val me               = myId.flatMap(gameState.players.get).fold("-") { p =>
+      val server =
+        myId.flatMap(serverGameState.players.get).fold("-")(s => show(s.currentPosition(serverNow)))
       s"life=${math.round(p.life)} pos=${show(p.currentPosition(serverNow))} (server: $server)"
     }
     s"[t=${math.round(elapsed * 10) / 10.0}s] messages=$messagesReceived actions=$actionsReceived entities=${gameState.entities.size} " +

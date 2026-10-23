@@ -6,8 +6,8 @@ import models.bff.ingame.Controls.InputCode
 import models.syntax.Pointed
 
 /** Changes the controls, like the frontend's `ControlSettings`: click a binding, then press the key
-  * (possibly with Shift) or the mouse button to bind to it. Every change is saved to `controls.json`
-  * (see [[ControlsFile]]), which the next game loads.
+  * (possibly with Shift) or the mouse button to bind to it. Every change is saved to
+  * `controls.json` (see [[ControlsFile]]), which the next game loads.
   *
   * Drawn over the menus (which stay open behind, e.g. the lobby and its websocket).
   */
@@ -26,27 +26,51 @@ final class ControlsEditor(close: () => Unit) {
     Binding("Go left", c.leftKey, code => c.copy(leftKey = code)),
     Binding("Go right", c.rightKey, code => c.copy(rightKey = code)),
     Binding("Next target", c.nextTargetKey, code => c.copy(nextTargetKey = code)),
-    Binding("Face the target", c.targetLockInToggleKey, code => c.copy(targetLockInToggleKey = code))
+    Binding(
+      "Face the target",
+      c.targetLockInToggleKey,
+      code => c.copy(targetLockInToggleKey = code)
+    )
   ) ++ c.abilityKeys.zipWithIndex.map((key, i) =>
     Binding(s"Ability ${i + 1}", key, code => c.copy(abilityKeys = c.abilityKeys.updated(i, code)))
   )
 
   private def markers(c: Controls): Seq[Binding] = {
-    val m = c.gameMarkerControls
+    val m                                                   = c.gameMarkerControls
     def change(f: GameMarkerControls => GameMarkerControls) = c.copy(gameMarkerControls = f(m))
     Seq(
       Binding("Cross on target", m.crossTargetKey, code => change(_.copy(crossTargetKey = code))),
       Binding("Cross on ground", m.crossFixedKey, code => change(_.copy(crossFixedKey = code))),
-      Binding("Lozenge on target", m.lozengeTargetKey, code => change(_.copy(lozengeTargetKey = code))),
-      Binding("Lozenge on ground", m.lozengeFixedKey, code => change(_.copy(lozengeFixedKey = code))),
+      Binding(
+        "Lozenge on target",
+        m.lozengeTargetKey,
+        code => change(_.copy(lozengeTargetKey = code))
+      ),
+      Binding(
+        "Lozenge on ground",
+        m.lozengeFixedKey,
+        code => change(_.copy(lozengeFixedKey = code))
+      ),
       Binding("Moon on target", m.moonTargetKey, code => change(_.copy(moonTargetKey = code))),
       Binding("Moon on ground", m.moonFixedKey, code => change(_.copy(moonFixedKey = code))),
-      Binding("Square on target", m.squareTargetKey, code => change(_.copy(squareTargetKey = code))),
+      Binding(
+        "Square on target",
+        m.squareTargetKey,
+        code => change(_.copy(squareTargetKey = code))
+      ),
       Binding("Square on ground", m.squareFixedKey, code => change(_.copy(squareFixedKey = code))),
       Binding("Star on target", m.starTargetKey, code => change(_.copy(starTargetKey = code))),
       Binding("Star on ground", m.starFixedKey, code => change(_.copy(starFixedKey = code))),
-      Binding("Triangle on target", m.triangleTargetKey, code => change(_.copy(triangleTargetKey = code))),
-      Binding("Triangle on ground", m.triangleFixedKey, code => change(_.copy(triangleFixedKey = code)))
+      Binding(
+        "Triangle on target",
+        m.triangleTargetKey,
+        code => change(_.copy(triangleTargetKey = code))
+      ),
+      Binding(
+        "Triangle on ground",
+        m.triangleFixedKey,
+        code => change(_.copy(triangleFixedKey = code))
+      )
     )
   }
 
@@ -60,26 +84,38 @@ final class ControlsEditor(close: () => Unit) {
     val box = Rect(width / 2 - 450, height / 2 - 300, 900, 600)
     ui.panel(box)
     ui.text("Controls", box.x + 24, box.y + 18, Theme.large)
-    ui.text("Click a binding, then press a key (possibly with Shift) or a mouse button. Changes apply to the next game.",
-      box.x + 24, box.y + 52, Theme.small, Theme.muted)
+    ui.text(
+      "Click a binding, then press a key (possibly with Shift) or a mouse button. Changes apply to the next game.",
+      box.x + 24,
+      box.y + 52,
+      Theme.small,
+      Theme.muted
+    )
 
     waiting match {
       case Some((action, change)) => capture(ui, box, action, change)
-      case None                   => bindings(ui, box)
+      case None => bindings(ui, box)
     }
   }
 
   /** Waits for the key or mouse button to bind. */
   private def capture(ui: Ui, box: Rect, action: String, change: InputCode => Controls): Unit = {
-    ui.textIn(s"Press a key or a mouse button for \"$action\"", Rect(box.x, box.y + 250, box.width, 30), Theme.large)
+    ui.textIn(
+      s"Press a key or a mouse button for \"$action\"",
+      Rect(box.x, box.y + 250, box.width, 30),
+      Theme.large
+    )
     ui.textIn("Escape to cancel", Rect(box.x, box.y + 290, box.width, 24), colour = Theme.muted)
     val modifiers = Set("lshift", "rshift")
     if (ui.wasPressed("escape")) waiting = None
     else
-      ui.pressedKeys.filterNot(modifiers).flatMap(LoveInput.inputCode).headOption
+      ui.pressedKeys
+        .filterNot(modifiers)
+        .flatMap(LoveInput.inputCode)
+        .headOption
         .orElse(ui.pressedButtons.headOption.map(LoveInput.mouseCode)) match {
         case Some(code) => set(change(code)); waiting = None
-        case None       => ()
+        case None => ()
       }
   }
 
@@ -98,15 +134,31 @@ final class ControlsEditor(close: () => Unit) {
     val toggleY = box.y + 84 + 25 * markerBindings.size + 12
     if (ui.checkbox(controls.mouseOverEnabled, "Mouse over", box.x + 470, toggleY))
       set(controls.copy(mouseOverEnabled = !controls.mouseOverEnabled))
-    ui.paragraph("Abilities fall back to the frame under the mouse when the target is not valid for them.",
-      box.x + 470, toggleY + 28, 390, Theme.small, Theme.muted)
+    ui.paragraph(
+      "Abilities fall back to the frame under the mouse when the target is not valid for them.",
+      box.x + 470,
+      toggleY + 28,
+      390,
+      Theme.small,
+      Theme.muted
+    )
 
     val bottom = box.bottom - 60
     for (key <- controls.maybeMultipleKey)
-      ui.text(s"${key.label} is bound to several actions", box.x + 24, bottom + 12, colour = Theme.negative.lighter(0.3))
-    for (message <- error) ui.text(message, box.x + 24, bottom - 14, Theme.small, Theme.negative.lighter(0.3))
-    if (ui.button("Reset to defaults", Rect(box.right - 380, bottom, 190, 40))) set(Pointed[Controls].unit)
-    if (ui.button("Done", Rect(box.right - 174, bottom, 150, 40), style = ButtonStyle.Primary) || ui.wasPressed("escape"))
+      ui.text(
+        s"${key.label} is bound to several actions",
+        box.x + 24,
+        bottom + 12,
+        colour = Theme.negative.lighter(0.3)
+      )
+    for (message <- error)
+      ui.text(message, box.x + 24, bottom - 14, Theme.small, Theme.negative.lighter(0.3))
+    if (ui.button("Reset to defaults", Rect(box.right - 380, bottom, 190, 40)))
+      set(Pointed[Controls].unit)
+    if (
+      ui.button("Done", Rect(box.right - 174, bottom, 150, 40), style = ButtonStyle.Primary) || ui
+        .wasPressed("escape")
+    )
       close()
   }
 }

@@ -64,11 +64,11 @@ final class HttpClient(baseUrl: String)(using ExecutionContext) {
   def post[A: Encoder](path: String, data: A): Future[Unit] =
     request("POST", path, Encoder[A].apply(data).noSpaces).map(_ => ())
 
-  /** POST returning an `APIResponse[B]`, the menu server's usual answer (failed with an [[ApiError]]). */
+  /** POST returning an `APIResponse[B]`, the menu server's usual answer (failed with an
+    * [[ApiError]]).
+    */
   def postApi[A: Encoder, B](path: String, data: A)(using Encoder[B], Decoder[B]): Future[B] =
     request("POST", path, Encoder[A].apply(data).noSpaces)
       .flatMap(decoded[APIResponse[B]])
-      .flatMap(response =>
-        Future.fromTry(response.toEither.left.map(ApiError(_)).toTry)
-      )
+      .flatMap(response => Future.fromTry(response.toEither.left.map(ApiError(_)).toTry))
 }

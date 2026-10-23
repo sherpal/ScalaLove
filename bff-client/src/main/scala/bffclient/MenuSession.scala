@@ -8,14 +8,23 @@ import models.bff.outofgame.gameconfig.*
 import utils.misc.RGBColour
 
 /** Credentials to connect to a game server, received from the menu server. */
-final case class GameAccess(host: String, port: Int, userName: String, gameId: String, secret: String)
+final case class GameAccess(
+    host: String,
+    port: Int,
+    userName: String,
+    gameId: String,
+    secret: String
+)
 
 /** How a game started from the menus was left. */
 enum GameExit {
+
   /** The game ended (its server can be stopped). */
   case Ended
+
   /** The player left during the game (if the only human player, its server can be stopped). */
   case LeftEarly(onlyHuman: Boolean)
+
   /** The game server closed the connection before the end of the game. */
   case ConnectionLost
   case CannotConnect(error: String)
@@ -25,36 +34,42 @@ enum GameExit {
   * runs): logs in, creates a game, chooses a class and gets ready, picks the boss, starts the game
   * and waits for the game server credentials (pushed on the lobby websocket).
   */
-final class MenuSession(api: MenuApi, userName: String, playerClass: PlayerClasses, bossName: String)(using
-    ExecutionContext) {
+final class MenuSession(
+    api: MenuApi,
+    userName: String,
+    playerClass: PlayerClasses,
+    bossName: String
+)(using ExecutionContext) {
 
   private val credentials = Promise[GameAccess]()
 
   def info(message: String): Unit = println(s"[menu] $message")
 
   def run(): Future[GameAccess] = for {
-    _      <- Future.successful(info(s"Logging in as $userName"))
-    me     <- api.login(userName)
-    _       = info(s"Logged in: $me (cookie ${api.sessionCookie})")
-    games  <- api.games
-    _       = info(s"${games.size} game(s) on the server")
-    game   <- api.createGame(s"ScalaLove ${System.currentTimeMillis()}")
-    _       = info(s"Created game '${game.game.gameName}' (${game.id})")
-    _      <- api.lobby(Some(game.id)) {
-                case MenuGameComm.HereAreYourCredentials(id, secret, port) =>
-                  credentials.trySuccess(GameAccess(api.host, port, userName, id, secret))
-                case MenuGameComm.GameStarted() => info("<- GameStarted")
-                case MenuGameComm.DataUpdated() => ()
-              }
-    _       = info("Lobby websocket connected")
-    _      <- api.changePlayerInfo(game.id, readyPlayerInfo)
-    _       = info(s"Playing a $playerClass, ready")
+    _  <- Future.successful(info(s"Logging in as $userName"))
+    me <- api.login(userName)
+    _ = info(s"Logged in: $me (cookie ${api.sessionCookie})")
+    games <- api.games
+    _ = info(s"${games.size} game(s) on the server")
+    game <- api.createGame(s"ScalaLove ${System.currentTimeMillis()}")
+    _ = info(s"Created game '${game.game.gameName}' (${game.id})")
+    _ <- api.lobby(Some(game.id)) {
+      case MenuGameComm.HereAreYourCredentials(id, secret, port) =>
+        credentials.trySuccess(GameAccess(api.host, port, userName, id, secret))
+      case MenuGameComm.GameStarted() => info("<- GameStarted")
+      case MenuGameComm.DataUpdated() => ()
+    }
+    _ = info("Lobby websocket connected")
+    _ <- api.changePlayerInfo(game.id, readyPlayerInfo)
+    _ = info(s"Playing a $playerClass, ready")
     config <- api.changeGameConfig(game.id, GameConfiguration.GameConfigMetadata(bossName))
-    _       = info(s"Boss: ${config.game.gameConfiguration.bossName}, configuration valid: ${config.game.gameConfigurationIsValid}")
+    _ = info(
+      s"Boss: ${config.game.gameConfiguration.bossName}, configuration valid: ${config.game.gameConfigurationIsValid}"
+    )
     started <- api.startGame(game.id)
-    _       = info(s"Start game: $started, waiting for the game server...")
+    _ = info(s"Start game: $started, waiting for the game server...")
     access <- credentials.future
-    _       = info(s"Game server ready on port ${access.port}")
+    _ = info(s"Game server ready on port ${access.port}")
   } yield access
 
   private def readyPlayerInfo = PlayerInfo(

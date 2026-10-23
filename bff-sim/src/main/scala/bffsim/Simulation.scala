@@ -46,7 +46,10 @@ object Simulation {
 
     // Setup, as in GameMaster.start()
     var pending = Vector.empty[GameAction]
-    for (cls <- PlayerClasses.allChoices; i <- 0 until playersPerClass) {
+    for {
+      cls <- PlayerClasses.allChoices
+      i   <- 0 until playersPerClass
+    } {
       val playerId = ids.entityId()
       pending = pending ++ (AddPlayerByClass(
         ids.actionId(),
@@ -120,10 +123,12 @@ object Simulation {
   }
 
   def summary(gs: GameState, tick: Int, actionCount: Long): String = {
-    val bosses = gs.bosses.values.toList.sortBy(_.id.toString)
+    val bosses = gs.bosses.values.toList
+      .sortBy(_.id.toString)
       .map(b => s"${b.name}=${round1(b.life)}")
       .mkString(",")
-    val players = gs.players.values.toList.sortBy(_.id.toString)
+    val players = gs.players.values.toList
+      .sortBy(_.id.toString)
       .map(p => s"${round1(p.life)}@${round1(p.pos.re)};${round1(p.pos.im)}")
       .mkString(" ")
     val buffs = gs.tickerBuffs.values.map(_.size).sum + gs.passiveBuffs.values.map(_.size).sum
@@ -145,21 +150,41 @@ object Simulation {
           val casting   = gs.entityIsCasting(me.id)
           val wantRange = me match {
             case _: Triangle | _: Square => WithTargetAbility.meleeRange * 0.8
-            case _                       => 300.0
+            case _ => 300.0
           }
 
           val movement: Option[GameAction] =
             if (casting) None
             else if (toBoss.modulus > wantRange) {
               val direction = toBoss.arg
-              Option.unless(me.moving && Complex.rotation(me.direction).distanceTo(Complex.rotation(direction)) < 1e-3)(
-                MovingBodyMoves(GameAction.Id.zero, time, me.id, myPos, direction, direction,
-                  Constants.playerSpeed, moving = true)
+              Option.unless(
+                me.moving && Complex
+                  .rotation(me.direction)
+                  .distanceTo(Complex.rotation(direction)) < 1e-3
+              )(
+                MovingBodyMoves(
+                  GameAction.Id.zero,
+                  time,
+                  me.id,
+                  myPos,
+                  direction,
+                  direction,
+                  Constants.playerSpeed,
+                  moving = true
+                )
               )
             } else
               Option.when(me.moving)(
-                MovingBodyMoves(GameAction.Id.zero, time, me.id, myPos, me.direction, toBoss.arg,
-                  Constants.playerSpeed, moving = false)
+                MovingBodyMoves(
+                  GameAction.Id.zero,
+                  time,
+                  me.id,
+                  myPos,
+                  me.direction,
+                  toBoss.arg,
+                  Constants.playerSpeed,
+                  moving = false
+                )
               )
 
           val ability: Option[Ability] = me match {
@@ -168,10 +193,23 @@ object Simulation {
             case _: Square =>
               Some(HammerHit(Ability.UseId.dummy, time, me.id, boss.id))
             case _: Pentagon =>
-              Some(CreatePentagonBullet(Ability.UseId.dummy, time, me.id, myPos,
-                CreatePentagonBullet.damage, toBoss.arg, 0x00ff00))
+              Some(
+                CreatePentagonBullet(
+                  Ability.UseId.dummy,
+                  time,
+                  me.id,
+                  myPos,
+                  CreatePentagonBullet.damage,
+                  toBoss.arg,
+                  0x00ff00
+                )
+              )
             case _: Hexagon =>
-              gs.players.values.filter(p => p.life < p.maxLife).toList.sortBy(_.life).headOption
+              gs.players.values
+                .filter(p => p.life < p.maxLife)
+                .toList
+                .sortBy(_.life)
+                .headOption
                 .map(target => FlashHeal(Ability.UseId.dummy, time, me.id, target.id))
             case _ => None
           }

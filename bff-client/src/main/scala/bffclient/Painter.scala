@@ -8,14 +8,20 @@ import gamelogic.gamestate.GameState
 import gamelogic.physics.Complex
 import gamelogic.physics.shape.{Circle, Polygon}
 
-/** Drawing in world coordinates, for one frame: the camera at `cameraPosition` (y axis pointing up),
-  * entities where they are shown (smoothed, except our predicted player).
+/** Drawing in world coordinates, for one frame: the camera at `cameraPosition` (y axis pointing
+  * up), entities where they are shown (smoothed, except our predicted player).
   */
-final class Painter(val gameState: GameState, val now: Long, cameraPosition: Complex, screenWidth: Double,
-    screenHeight: Double, smoothing: Smoothing) {
+final class Painter(
+    val gameState: GameState,
+    val now: Long,
+    cameraPosition: Complex,
+    screenWidth: Double,
+    screenHeight: Double,
+    smoothing: Smoothing
+) {
 
   def position(entity: WithPosition): Complex = smoothing.position(entity, now)
-  def rotation(body: Body): Angle               = smoothing.rotation(body)
+  def rotation(body: Body): Angle             = smoothing.rotation(body)
 
   def toScreen(z: Complex): (Double, Double) = {
     val d = z - cameraPosition
@@ -23,7 +29,9 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
   }
 
   def polygonCoords(points: Iterable[Complex]): Seq[Double] =
-    points.toSeq.flatMap { p => val (x, y) = toScreen(p); Seq(x, y) }
+    points.toSeq.flatMap { p =>
+      val (x, y) = toScreen(p); Seq(x, y)
+    }
 
   def setColour(colour: Paint): Unit = Graphics.setColor(colour.r, colour.g, colour.b, colour.a)
 
@@ -42,7 +50,10 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
           Graphics.polygon("fill", polygonCoords(corners)*)
         }
       case polygon: Polygon =>
-        Graphics.polygon("line", polygonCoords(polygon.translateAndRotationVertices(pos, rotation(body)))*)
+        Graphics.polygon(
+          "line",
+          polygonCoords(polygon.translateAndRotationVertices(pos, rotation(body)))*
+        )
       case _ =>
         ()
     }
@@ -50,26 +61,44 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
 
   /** The body's shape, filled and/or outlined (stroke: width and colour). */
   def shape(body: Body, fill: Option[Paint], stroke: Option[(Double, Paint)] = None): Unit = {
-    fill.foreach { colour => setColour(colour); drawShape(body, "fill") }
+    fill.foreach { colour =>
+      setColour(colour); drawShape(body, "fill")
+    }
     stroke.foreach { (width, colour) =>
-      setColour(colour); Graphics.setLineWidth(width); drawShape(body, "line"); Graphics.setLineWidth(1)
+      setColour(colour); Graphics.setLineWidth(width); drawShape(body, "line");
+      Graphics.setLineWidth(1)
     }
   }
 
-  def circle(centre: Complex, radius: Double, fill: Option[Paint], stroke: Option[(Double, Paint)] = None): Unit = {
+  def circle(
+      centre: Complex,
+      radius: Double,
+      fill: Option[Paint],
+      stroke: Option[(Double, Paint)] = None
+  ): Unit = {
     val (x, y) = toScreen(centre)
-    fill.foreach { colour => setColour(colour); Graphics.circle("fill", x, y, radius) }
+    fill.foreach { colour =>
+      setColour(colour); Graphics.circle("fill", x, y, radius)
+    }
     stroke.foreach { (width, colour) =>
-      setColour(colour); Graphics.setLineWidth(width); Graphics.circle("line", x, y, radius); Graphics.setLineWidth(1)
+      setColour(colour); Graphics.setLineWidth(width); Graphics.circle("line", x, y, radius);
+      Graphics.setLineWidth(1)
     }
   }
 
   /** A convex polygon. */
-  def polygon(points: Seq[Complex], fill: Option[Paint], stroke: Option[(Double, Paint)] = None): Unit = {
+  def polygon(
+      points: Seq[Complex],
+      fill: Option[Paint],
+      stroke: Option[(Double, Paint)] = None
+  ): Unit = {
     val coords = polygonCoords(points)
-    fill.foreach { colour => setColour(colour); Graphics.polygon("fill", coords*) }
+    fill.foreach { colour =>
+      setColour(colour); Graphics.polygon("fill", coords*)
+    }
     stroke.foreach { (width, colour) =>
-      setColour(colour); Graphics.setLineWidth(width); Graphics.polygon("line", coords*); Graphics.setLineWidth(1)
+      setColour(colour); Graphics.setLineWidth(width); Graphics.polygon("line", coords*);
+      Graphics.setLineWidth(1)
     }
   }
 
@@ -85,7 +114,12 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
   /** A line from the centre of the body in the direction it faces. */
   def nose(body: Body, colour: (Double, Double, Double)): Unit = {
     val pos = position(body)
-    line(pos, pos + Complex.polar(body.shape.radius, rotation(body)), 2, Paint(colour._1, colour._2, colour._3))
+    line(
+      pos,
+      pos + Complex.polar(body.shape.radius, rotation(body)),
+      2,
+      Paint(colour._1, colour._2, colour._3)
+    )
   }
 
   /** Above the entity, in the [[HudStyle]]. */
@@ -96,9 +130,14 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
     HudStyle.bar(Rect(x - radius, y - 3, 2 * radius, 6), ratio, HudStyle.lifeColour(ratio))
   }
 
-  /** The buffs of the entity that have an icon, the oldest first (like the frontend's buff containers). */
+  /** The buffs of the entity that have an icon, the oldest first (like the frontend's buff
+    * containers).
+    */
   def iconBuffs(entityId: Entity.Id): Seq[(Buff, Sprite)] =
-    gameState.allBuffsOfEntity(entityId).toSeq.sortBy(_.appearanceTime)
+    gameState
+      .allBuffsOfEntity(entityId)
+      .toSeq
+      .sortBy(_.appearanceTime)
       .flatMap(buff => Sprites.buffIcons.get(buff.resourceIdentifier).map(buff -> _))
 
   /** A row of the entity's buff icons above its life bar. Like the frontend, the icons of the buffs
@@ -111,11 +150,14 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
       val (x, y) = toScreen(position(entity) + Complex.i * (entity.shape.radius + 10))
       val left   = x - buffs.size * (size + 2) / 2
       val top    = y - 2.5 - 3 - size
-      for (((buff, icon), i) <- buffs.zipWithIndex) buffIcon(buff, icon, left + i * (size + 2) + 1, top, size)
+      for (((buff, icon), i) <- buffs.zipWithIndex)
+        buffIcon(buff, icon, left + i * (size + 2) + 1, top, size)
     }
   }
 
-  /** The icon of the buff (on screen), darkened from the top by the part of its duration that remains. */
+  /** The icon of the buff (on screen), darkened from the top by the part of its duration that
+    * remains.
+    */
   def buffIcon(buff: Buff, icon: Sprite, left: Double, top: Double, size: Double): Unit = {
     Graphics.setColor(1, 1, 1)
     icon.draw(left + size / 2, top + size / 2, 0, size, size)
@@ -132,7 +174,12 @@ final class Painter(val gameState: GameState, val now: Long, cameraPosition: Com
     gameState.castingEntityInfo.get(entity.id).filter(_.isCasting(now, 0L)).foreach { info =>
       val radius   = entity.shape.radius
       val (x, y)   = toScreen(position(entity) - Complex.i * (radius + 10))
-      val progress = (info.castingTime - info.remainingCastingTime(now, 0L)).toDouble / info.castingTime
-      HudStyle.bar(Rect(x - radius, y - 3, 2 * radius, 6), progress, HudStyle.softened(info.ability.abilityColour))
+      val progress =
+        (info.castingTime - info.remainingCastingTime(now, 0L)).toDouble / info.castingTime
+      HudStyle.bar(
+        Rect(x - radius, y - 3, 2 * radius, 6),
+        progress,
+        HudStyle.softened(info.ability.abilityColour)
+      )
     }
 }

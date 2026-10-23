@@ -11,19 +11,42 @@ final class Sprite(image: Image, rows: Int = 1, columns: Int = 1) {
   private val frames: Vector[Quad] = for {
     row    <- (0 until rows).toVector
     column <- 0 until columns
-  } yield Graphics.newQuad(column * frameWidth, row * frameHeight, frameWidth, frameHeight, image.getWidth(),
-    image.getHeight())
+  } yield Graphics.newQuad(
+    column * frameWidth,
+    row * frameHeight,
+    frameWidth,
+    frameHeight,
+    image.getWidth(),
+    image.getHeight()
+  )
 
   def frameCount: Int = frames.size
 
-  /** Draws the frame centred at (x, y) on screen, turned by `rotation` (counterclockwise, like in the
-    * game), `width` pixels wide (and as high as the frame's proportions say, unless given). The
+  /** Draws the frame centred at (x, y) on screen, turned by `rotation` (counterclockwise, like in
+    * the game), `width` pixels wide (and as high as the frame's proportions say, unless given). The
     * current colour tints it.
     */
-  def draw(x: Double, y: Double, rotation: Double, width: Double, height: Double = -1, frame: Int = 0): Unit = {
+  def draw(
+      x: Double,
+      y: Double,
+      rotation: Double,
+      width: Double,
+      height: Double = -1,
+      frame: Int = 0
+  ): Unit = {
     val scaleX = width / frameWidth
     val scaleY = if (height < 0) scaleX else height / frameHeight
-    Graphics.draw(image, frames(frame % frames.size), x, y, -rotation, scaleX, scaleY, frameWidth / 2, frameHeight / 2)
+    Graphics.draw(
+      image,
+      frames(frame % frames.size),
+      x,
+      y,
+      -rotation,
+      scaleX,
+      scaleY,
+      frameWidth / 2,
+      frameHeight / 2
+    )
   }
 }
 
@@ -39,7 +62,8 @@ object Sprites {
     }.toMap
 
   /** Sparks in the hands of a player casting an ability (6 x 5 frames, tinted with its colour). */
-  lazy val casting: Option[Sprite] = load("abilities/player-casting-ability-animation.png", rows = 6, columns = 5)
+  lazy val casting: Option[Sprite] =
+    load("abilities/player-casting-ability-animation.png", rows = 6, columns = 5)
 
   /** The square's cleave (3 frames). */
   lazy val cleave: Option[Sprite] = load("abilities/cleave-animation.png", columns = 3)
@@ -47,17 +71,20 @@ object Sprites {
   /** The sword of the triangle's direct hit. */
   lazy val sword: Option[Sprite] = load("abilities/sword.png")
 
-  /** Boss 102's damage zones (12 frames) and the zone around the players carrying one (3 x 5 frames). */
-  lazy val damageZone: Option[Sprite]       = load("boss/dawn-of-time/boss102/damage-zone-animation.png", columns = 12)
+  /** Boss 102's damage zones (12 frames) and the zone around the players carrying one (3 x 5
+    * frames).
+    */
+  lazy val damageZone: Option[Sprite] =
+    load("boss/dawn-of-time/boss102/damage-zone-animation.png", columns = 12)
   lazy val livingDamageZone: Option[Sprite] =
     load("boss/dawn-of-time/boss102/living-damage-zone-animation.png", rows = 3, columns = 5)
 
   /** On the target frame, when we face our target. */
   lazy val smallLock: Option[Sprite] = load("misc/small-lock.png")
 
-  /** The icons of the buffs, like the frontend's `Asset.buffAssetMap`, without the permanent buffs of
-    * the classes (the square's shield, the resource fillers), which every player of the class has, and
-    * without Boss 110's.
+  /** The icons of the buffs, like the frontend's `Asset.buffAssetMap`, without the permanent buffs
+    * of the classes (the square's shield, the resource fillers), which every player of the class
+    * has, and without Boss 110's.
     */
   lazy val buffIcons: Map[Buff.ResourceIdentifier, Sprite] = Seq(
     Buff.hexagonHotIdentifier     -> "abilities/hexagon-hot",

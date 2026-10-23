@@ -13,6 +13,7 @@ import org.scalajs.linker.standard.{LinkedClass, ModuleSet}
 
 /** Knowledge about the whole program, shared by all function emitters. */
 final class GlobalContext(val classes: Map[ClassName, LinkedClass]) {
+
   /** All ancestors of hijacked classes: values of these types may be primitives. */
   val hijackedAncestors: Set[ClassName] =
     classes.values.filter(_.kind == ClassKind.HijackedClass).flatMap(_.ancestors).toSet ++
@@ -20,20 +21,22 @@ final class GlobalContext(val classes: Map[ClassName, LinkedClass]) {
 
   def mayBeHijacked(tpe: Type): Boolean = tpe match {
     case AnyType | AnyNotNullType => true
-    case ClassType(cls, _, _)     => hijackedAncestors(cls)
-    case _: PrimType              => tpe != VoidType && tpe != NothingType && tpe != NullType
-    case _                        => false
+    case ClassType(cls, _, _) => hijackedAncestors(cls)
+    case _: PrimType => tpe != VoidType && tpe != NothingType && tpe != NullType
+    case _ => false
   }
 
   /** The hijacked class whose methods implement calls on a receiver of this type, if any. */
   def hijackedClassOf(tpe: Type): Option[ClassName] = tpe match {
     case ClassType(cls, _, _) if HijackedClasses(cls) => Some(cls)
-    case tpe: PrimType                                => PrimTypeToBoxedClass.get(tpe)
-    case _                                            => None
+    case tpe: PrimType => PrimTypeToBoxedClass.get(tpe)
+    case _ => None
   }
 
   def hasMethod(cls: ClassName, namespace: MemberNamespace, method: MethodName): Boolean =
-    classes.get(cls).exists(_.methods.exists(m => m.flags.namespace == namespace && m.methodName == method))
+    classes
+      .get(cls)
+      .exists(_.methods.exists(m => m.flags.namespace == namespace && m.methodName == method))
 
   def jsNativeLoadSpec(cls: ClassName): Option[JSNativeLoadSpec] =
     classes.get(cls).flatMap(_.jsNativeLoadSpec)
@@ -49,6 +52,7 @@ final class GlobalContext(val classes: Map[ClassName, LinkedClass]) {
 }
 
 object LuaEmitter {
+
   /** Above this number of declared locals in a Lua function, we spill them (Lua's limit is 200). */
   val MaxLocals = 180
 }
@@ -62,8 +66,10 @@ final class LuaEmitter(moduleSet: ModuleSet) {
 
   private val emittedClasses = linkedClasses.filter { c =>
     c.kind match {
-      case ClassKind.Class | ClassKind.ModuleClass | ClassKind.Interface | ClassKind.HijackedClass => true
-      case _                                                                                     => false
+      case ClassKind.Class | ClassKind.ModuleClass | ClassKind.Interface |
+          ClassKind.HijackedClass =>
+        true
+      case _ => false
     }
   }
 
@@ -73,26 +79,26 @@ final class LuaEmitter(moduleSet: ModuleSet) {
   private def cls(name: ClassName): String = s"C.${Naming.className(name)}"
 
   private def zeroOf(tpe: Type): Option[String] = tpe match {
-    case BooleanType                                                       => Some("false")
+    case BooleanType => Some("false")
     case CharType | ByteType | ShortType | IntType | FloatType | DoubleType => Some("0")
-    case LongType                                                          => Some("0LL")
-    case _                                                                 => None
+    case LongType => Some("0LL")
+    case _ => None
   }
 
   private def kindString(kind: ClassKind): String = kind match {
     case ClassKind.Interface => "interface"
-    case _                   => "class"
+    case _ => "class"
   }
 
   def emit(runtime: String, logger: String => Unit): String = {
-    val sb = new StringBuilder
+    val sb                       = new StringBuilder
     def ln(s: String = ""): Unit = sb.append(s).append('\n')
 
     // Assign field names, ancestors first so that subclasses avoid their ancestors' names
     val fieldIdentsOf = mutable.Map.empty[ClassName, Set[String]]
     for (c <- emittedClasses.sortBy(depth)) {
       val inherited = c.superClass.flatMap(s => fieldIdentsOf.get(s.name)).getOrElse(Set.empty)
-      var taken = inherited
+      var taken     = inherited
       for (f <- c.fields) f match {
         case FieldDef(flags, name, _, _) if !flags.namespace.isStatic =>
           taken += Naming.assignFieldName(name.name, taken)
@@ -110,18 +116,25 @@ final class LuaEmitter(moduleSet: ModuleSet) {
     ln("local tobit, band, bor, bxor, bnot = bit.tobit, bit.band, bit.bor, bit.bxor, bit.bnot")
     ln("local lshift, rshift, arshift = bit.lshift, bit.rshift, bit.arshift")
     ln("local AT = {}")
-    ln("-- Lifted Scala lambdas: F.x is the function, a lambda value is {F.x, captures...} (FC.x without captures)")
+    ln(
+      "-- Lifted Scala lambdas: F.x is the function, a lambda value is {F.x, captures...} (FC.x without captures)"
+    )
     ln("local F, FC = {}, {}")
     ln()
 
     // 1. Class tables
     ln("-- Classes")
     for (c <- emittedClasses) {
-      val ancestors = c.ancestors.map(a => FunctionEmitter.luaString(a.nameString)).mkString("{", ", ", "}")
-      ln(s"""${cls(c.className)} = R.declare(${FunctionEmitter.luaString(c.className.nameString)}, "${kindString(c.kind)}", $ancestors)""")
+      val ancestors =
+        c.ancestors.map(a => FunctionEmitter.luaString(a.nameString)).mkString("{", ", ", "}")
+      ln(s"""${cls(c.className)} = R.declare(${FunctionEmitter.luaString(
+          c.className.nameString
+        )}, "${kindString(c.kind)}", $ancestors)""")
       for (f <- c.fields) f match {
         case FieldDef(flags, name, _, ftpe) if flags.namespace.isStatic =>
-          zeroOf(ftpe).foreach(z => ln(s"${cls(c.className)}.${Naming.staticFieldName(name.name)} = $z"))
+          zeroOf(ftpe).foreach(z =>
+            ln(s"${cls(c.className)}.${Naming.staticFieldName(name.name)} = $z")
+          )
         case _ =>
       }
     }
@@ -132,20 +145,30 @@ final class LuaEmitter(moduleSet: ModuleSet) {
     for (c <- emittedClasses) {
       ln(s"-- ${c.className.nameString}")
       val isHijacked = c.kind == ClassKind.HijackedClass
-      for (m <- c.methods; body <- m.body) {
-        val ns = m.flags.namespace
-        val name = s"${cls(c.className)}.${Naming.methodName(ns, m.methodName)}"
+      for {
+        m    <- c.methods
+        body <- m.body
+      } {
+        val ns        = m.flags.namespace
+        val name      = s"${cls(c.className)}.${Naming.methodName(ns, m.methodName)}"
         val thisParam = if (ns.isStatic) None else Some("this")
         try {
           def emitWith(spill: Boolean): (String, FunctionEmitter) = {
-            val fe = new FunctionEmitter(g, c.className, spill)
-            val code = fe.emitMethod(name, thisParam, m.args, m.resultType, body,
-                returnThis = ns == MemberNamespace.Constructor)
+            val fe   = new FunctionEmitter(g, c.className, spill)
+            val code = fe.emitMethod(
+              name,
+              thisParam,
+              m.args,
+              m.resultType,
+              body,
+              returnThis = ns == MemberNamespace.Constructor
+            )
             (code, fe)
           }
           val first = emitWith(spill = false)
           // Lua allows at most 200 locals per function: spill them into a table if we may exceed it
-          val (code, fe) = if (first._2.maxLocalCount > LuaEmitter.MaxLocals) emitWith(spill = true) else first
+          val (code, fe) =
+            if (first._2.maxLocalCount > LuaEmitter.MaxLocals) emitWith(spill = true) else first
           for ((key, fnCode, hasCaptures) <- fe.liftedFunctions) {
             sb.append(s"F.$key = ").append(fnCode).append('\n')
             if (!hasCaptures) sb.append(s"FC.$key = {F.$key}\n")
@@ -154,26 +177,35 @@ final class LuaEmitter(moduleSet: ModuleSet) {
         } catch {
           case e: Exception =>
             unsupportedCount += 1
-            logger(s"warning: could not emit ${c.className.nameString}.${m.methodName.nameString}: $e")
-            ln(s"""function $name() error("ScalaLove: method not supported: ${m.methodName.nameString}") end""")
+            logger(
+              s"warning: could not emit ${c.className.nameString}.${m.methodName.nameString}: $e"
+            )
+            ln(
+              s"""function $name() error("ScalaLove: method not supported: ${m.methodName.nameString}") end"""
+            )
         }
       }
 
       // Instance creator, with fields initialized to their zero
       if ((c.kind == ClassKind.Class || c.kind == ClassKind.ModuleClass) && c.hasDirectInstances) {
-        val chain = Iterator.iterate(Option(c))(_.flatMap(_.superClass).flatMap(s => g.classes.get(s.name)))
-          .takeWhile(_.isDefined).flatten.toList.reverse
+        val chain = Iterator
+          .iterate(Option(c))(_.flatMap(_.superClass).flatMap(s => g.classes.get(s.name)))
+          .takeWhile(_.isDefined)
+          .flatten
+          .toList
+          .reverse
         val inits = for {
           k <- chain
           case FieldDef(flags, name, _, ftpe) <- k.fields
           if !flags.namespace.isStatic
           z <- zeroOf(ftpe)
         } yield s"${Naming.fieldName(name.name)} = $z"
-        ln(s"function ${cls(c.className)}.__new() return setmetatable(${inits.mkString("{", ", ", "}")}, ${cls(c.className)}) end")
+        ln(s"function ${cls(c.className)}.__new() return setmetatable(${inits
+            .mkString("{", ", ", "}")}, ${cls(c.className)}) end")
       }
 
       if (c.kind == ClassKind.ModuleClass) {
-        val n = Naming.className(c.className)
+        val n    = Naming.className(c.className)
         val ctor = Naming.methodName(MemberNamespace.Constructor, NoArgConstructorName)
         ln(s"function LOAD.$n() local o = C.$n.__new(); MOD.$n = o; C.$n.$ctor(o); return o end")
       }
@@ -184,7 +216,8 @@ final class LuaEmitter(moduleSet: ModuleSet) {
     ln("-- Inheritance")
     val (interfaces, others) = emittedClasses.partition(_.kind == ClassKind.Interface)
     def interfaceTables(c: LinkedClass): String = {
-      val ifaces = c.ancestors.filter(a => a != c.className && g.classes.get(a).exists(_.kind == ClassKind.Interface))
+      val ifaces = c.ancestors
+        .filter(a => a != c.className && g.classes.get(a).exists(_.kind == ClassKind.Interface))
         .sortBy(a => -g.classes(a).ancestors.size)
         .filter(a => emittedClasses.exists(_.className == a))
       ifaces.map(cls).mkString("{", ", ", "}")
@@ -192,7 +225,10 @@ final class LuaEmitter(moduleSet: ModuleSet) {
     for (c <- interfaces.sortBy(_.ancestors.size))
       ln(s"R.inherit(${cls(c.className)}, nil, ${interfaceTables(c)})")
     for (c <- others.sortBy(depth)) {
-      val superTable = c.superClass.filter(s => emittedClasses.exists(_.className == s.name)).map(s => cls(s.name)).getOrElse("nil")
+      val superTable = c.superClass
+        .filter(s => emittedClasses.exists(_.className == s.name))
+        .map(s => cls(s.name))
+        .getOrElse("nil")
       ln(s"R.inherit(${cls(c.className)}, $superTable, ${interfaceTables(c)})")
     }
     ln()
@@ -209,7 +245,9 @@ final class LuaEmitter(moduleSet: ModuleSet) {
     ln(s"R.H.unit = ${ifPresent(BoxedUnitClass)}")
     def ancestorsSet(name: ClassName): String = {
       val ancestors = g.classes.get(name).map(_.ancestors).getOrElse(List(name, ObjectClass))
-      ancestors.map(a => s"[${FunctionEmitter.luaString(a.nameString)}] = true").mkString("{", ", ", "}")
+      ancestors
+        .map(a => s"[${FunctionEmitter.luaString(a.nameString)}] = true")
+        .mkString("{", ", ", "}")
     }
     ln(s"R.hijackedAncestors.string = ${ancestorsSet(BoxedStringClass)}")
     ln(s"R.hijackedAncestors.number = ${ancestorsSet(BoxedDoubleClass)}")
@@ -217,19 +255,31 @@ final class LuaEmitter(moduleSet: ModuleSet) {
     ln(s"R.hijackedAncestors.long = ${ancestorsSet(BoxedLongClass)}")
     ln(s"R.hijackedAncestors.char = ${ancestorsSet(BoxedCharacterClass)}")
     ln(s"R.hijackedAncestors.unit = ${ancestorsSet(BoxedUnitClass)}")
-    ln(s"""R.setToStringName("${Naming.methodName(MemberNamespace.Public, LuaBackend.toStringMethodName)}")""")
-    ln(s"""R.hashCodeName = "${Naming.methodName(MemberNamespace.Public, LuaBackend.hashCodeMethodName)}"""")
+    ln(s"""R.setToStringName("${Naming.methodName(
+        MemberNamespace.Public,
+        LuaBackend.toStringMethodName
+      )}")""")
+    ln(s"""R.hashCodeName = "${Naming.methodName(
+        MemberNamespace.Public,
+        LuaBackend.hashCodeMethodName
+      )}"""")
 
     val jsExc = LuaBackend.JavaScriptExceptionClass
     if (emittedClasses.exists(_.className == jsExc)) {
-      val ctor = Naming.methodName(MemberNamespace.Constructor, LuaBackend.AnyArgConstructorName)
+      val ctor  = Naming.methodName(MemberNamespace.Constructor, LuaBackend.AnyArgConstructorName)
       val field = Naming.fieldName(FieldName(jsExc, SimpleFieldName("exception")))
-      ln(s"R.wrapJSException = function(e) return ${cls(jsExc)}.$ctor(${cls(jsExc)}.__new(), e) end")
-      ln(s"""R.unwrapJSException = function(e) if R.isInstance(e, "${jsExc.nameString}") then return e.$field end return e end""")
+      ln(
+        s"R.wrapJSException = function(e) return ${cls(jsExc)}.$ctor(${cls(jsExc)}.__new(), e) end"
+      )
+      ln(
+        s"""R.unwrapJSException = function(e) if R.isInstance(e, "${jsExc.nameString}") then return e.$field end return e end"""
+      )
     }
     if (emittedClasses.exists(_.className == ArithmeticExceptionClass)) {
       val ctor = Naming.methodName(MemberNamespace.Constructor, LuaBackend.StringArgConstructorName)
-      ln(s"R.arithmeticException = function(msg) error(${cls(ArithmeticExceptionClass)}.$ctor(${cls(ArithmeticExceptionClass)}.__new(), msg), 0) end")
+      ln(
+        s"R.arithmeticException = function(msg) error(${cls(ArithmeticExceptionClass)}.$ctor(${cls(ArithmeticExceptionClass)}.__new(), msg), 0) end"
+      )
     }
     ln()
 
@@ -240,11 +290,14 @@ final class LuaEmitter(moduleSet: ModuleSet) {
     for ((ArrayTypeRef(base, dims), i) <- g.allArrayTypes) {
       val (b, zero) = base match {
         case ref: PrimRef =>
-          val z = if (dims > 1) "nil" else ref.tpe match {
-            case BooleanType => "false"
-            case LongType    => "0LL"
-            case _           => "0"
-          }
+          val z =
+            if (dims > 1) "nil"
+            else
+              ref.tpe match {
+                case BooleanType => "false"
+                case LongType => "0LL"
+                case _ => "0"
+              }
           (ref.charCode.toString, z)
         case ClassRef(c) => (c.nameString, "nil")
       }
@@ -254,23 +307,31 @@ final class LuaEmitter(moduleSet: ModuleSet) {
 
     // 6. Static initializers
     ln("-- Static initializers")
-    for (c <- emittedClasses if c.hasStaticInitializer) {
-      ln(s"${cls(c.className)}.${Naming.methodName(MemberNamespace.StaticConstructor, StaticInitializerName)}()")
-    }
+    for (c <- emittedClasses if c.hasStaticInitializer)
+      ln(
+        s"${cls(c.className)}.${Naming.methodName(MemberNamespace.StaticConstructor, StaticInitializerName)}()"
+      )
     ln()
 
     // 7. Module initializers (main methods)
     ln("-- Main")
-    for (module <- moduleSet.modules; init <- module.initializers) {
+    for {
+      module <- moduleSet.modules
+      init   <- module.initializers
+    }
       ModuleInitializerImpl.fromInitializer(init) match {
         case ModuleInitializerImpl.VoidMainMethod(className, methodName) =>
           ln(s"${cls(className)}.${Naming.methodName(MemberNamespace.PublicStatic, methodName)}()")
         case ModuleInitializerImpl.MainMethodWithArgs(className, methodName, args) =>
-          val argsArray = args.map(FunctionEmitter.luaString).zipWithIndex
-            .map((a, i) => if (i == 0) s"[0] = $a" else a).mkString("{", ", ", "}")
-          ln(s"${cls(className)}.${Naming.methodName(MemberNamespace.PublicStatic, methodName)}(R.arrayOf(AT[$stringArrayIndex], $argsArray, ${args.size}))")
+          val argsArray = args
+            .map(FunctionEmitter.luaString)
+            .zipWithIndex
+            .map((a, i) => if (i == 0) s"[0] = $a" else a)
+            .mkString("{", ", ", "}")
+          ln(
+            s"${cls(className)}.${Naming.methodName(MemberNamespace.PublicStatic, methodName)}(R.arrayOf(AT[$stringArrayIndex], $argsArray, ${args.size}))"
+          )
       }
-    }
 
     if (unsupportedCount > 0) logger(s"$unsupportedCount method(s) could not be emitted")
     sb.toString

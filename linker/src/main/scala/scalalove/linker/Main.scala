@@ -16,9 +16,10 @@ import org.scalajs.linker.standard.*
 import org.scalajs.logging.*
 
 object LuaBackend {
-  val JavaScriptExceptionClass: ClassName = ClassName("scala.scalajs.js.JavaScriptException")
-  val AnyArgConstructorName: MethodName = MethodName.constructor(List(ClassRef(ObjectClass)))
-  val StringArgConstructorName: MethodName = MethodName.constructor(List(ClassRef(BoxedStringClass)))
+  val JavaScriptExceptionClass: ClassName  = ClassName("scala.scalajs.js.JavaScriptException")
+  val AnyArgConstructorName: MethodName    = MethodName.constructor(List(ClassRef(ObjectClass)))
+  val StringArgConstructorName: MethodName =
+    MethodName.constructor(List(ClassRef(BoxedStringClass)))
   val toStringMethodName: MethodName = MethodName("toString", Nil, ClassRef(BoxedStringClass))
   val hashCodeMethodName: MethodName = MethodName("hashCode", Nil, IntRef)
 
@@ -45,10 +46,12 @@ object LuaBackend {
     .withStringIndexOutOfBounds(CheckedBehavior.Unchecked)
     .withModuleInit(CheckedBehavior.Unchecked)
 
-  /** Targeting ES 5.1 makes the Scala.js library use its pure Scala fallbacks instead of
-   *  newer JS built-ins (e.g. heap `ByteBuffer`s instead of typed arrays).
-   */
-  @annotation.nowarn("cat=deprecation") // ES 5.1 is deprecated as a JS target, which does not matter for Lua
+  /** Targeting ES 5.1 makes the Scala.js library use its pure Scala fallbacks instead of newer JS
+    * built-ins (e.g. heap `ByteBuffer`s instead of typed arrays).
+    */
+  @annotation.nowarn(
+    "cat=deprecation"
+  ) // ES 5.1 is deprecated as a JS target, which does not matter for Lua
   val esFeatures: ESFeatures = ESFeatures.Defaults.withESVersion(ESVersion.ES5_1)
 
   def runtime: String = {
@@ -66,29 +69,35 @@ object Main {
 
     val config = StandardConfig()
       .withSemantics(LuaBackend.semantics)
-      .withESFeatures(LuaBackend.esFeatures).withModuleKind(ModuleKind.CommonJSModule)
+      .withESFeatures(LuaBackend.esFeatures)
+      .withModuleKind(ModuleKind.CommonJSModule)
       .withOptimizer(false)
       .withCheckIR(true)
     val frontend = StandardLinkerFrontend(config)
-    val logger = new ScalaConsoleLogger(Level.Warn)
+    val logger   = new ScalaConsoleLogger(Level.Warn)
 
     val initializers = Seq(ModuleInitializer.mainMethodWithArgs(mainClass, "main"))
-    val irFiles = Await.result(
-        PathIRContainer.fromClasspath(classpath).flatMap((containers, _) =>
-            StandardImpl.irFileCache().newCache.cached(containers)),
-        Duration.Inf)
+    val irFiles      = Await.result(
+      PathIRContainer
+        .fromClasspath(classpath)
+        .flatMap((containers, _) => StandardImpl.irFileCache().newCache.cached(containers)),
+      Duration.Inf
+    )
 
     def link(extra: SymbolRequirement): ModuleSet =
-      Await.result(frontend.link(irFiles, initializers, LuaBackend.symbolRequirements ++ extra, logger), Duration.Inf)
+      Await.result(
+        frontend.link(irFiles, initializers, LuaBackend.symbolRequirements ++ extra, logger),
+        Duration.Inf
+      )
 
     // Multiple-return calls need the corresponding TupleN classes to be instantiable.
     // We only know whether there are such calls after linking, so link again if necessary.
     val firstModuleSet = link(SymbolRequirement.factory("lua-backend").none())
-    val arities = MultipleReturns.aritiesUsed(firstModuleSet)
-    val tuplesReady = arities.forall { n =>
+    val arities        = MultipleReturns.aritiesUsed(firstModuleSet)
+    val tuplesReady    = arities.forall { n =>
       firstModuleSet.modules.flatMap(_.classDefs).exists { c =>
         c.className == MultipleReturns.tupleClass(n) && c.hasDirectInstances &&
-          c.methods.exists(_.methodName == MultipleReturns.tupleConstructor(n))
+        c.methods.exists(_.methodName == MultipleReturns.tupleConstructor(n))
       }
     }
     val moduleSet =

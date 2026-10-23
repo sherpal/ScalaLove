@@ -16,7 +16,9 @@ object ControlsFile {
   /** Writes the controls (used by the next game). An error message if it failed. */
   def save(controls: Controls): Option[String] = {
     val written = Filesystem.write(fileName, Encoder[Controls].apply(controls).spaces2)
-    Option.unless(written.success)(s"Could not write ${Filesystem.getSaveDirectory()}/$fileName: ${written.message}")
+    Option.unless(written.success)(
+      s"Could not write ${Filesystem.getSaveDirectory()}/$fileName: ${written.message}"
+    )
   }
 
   /** The controls to use, and a message saying where they come from. */
@@ -34,7 +36,8 @@ object ControlsFile {
       } yield controls
       decoded match {
         case Right(controls) =>
-          val duplicate = controls.maybeMultipleKey.fold("")(key => s" (warning: ${key.label} is assigned twice)")
+          val duplicate =
+            controls.maybeMultipleKey.fold("")(key => s" (warning: ${key.label} is assigned twice)")
           (controls, s"Controls loaded from $path$duplicate")
         case Left(error) =>
           (default, s"Default controls ($path is invalid: ${error.getMessage})")

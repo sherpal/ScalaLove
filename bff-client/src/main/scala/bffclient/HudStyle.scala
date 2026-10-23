@@ -3,8 +3,8 @@ package bffclient
 import bffclient.ui.{Colour as Paint, Rect}
 import utils.misc.RGBColour
 
-/** The look of the HUD: dark translucent panels with rounded corners and a thin light border, rounded
-  * bars on a dark track with a sheen, and white text with a shadow.
+/** The look of the HUD: dark translucent panels with rounded corners and a thin light border,
+  * rounded bars on a dark track with a sheen, and white text with a shadow.
   */
 object HudStyle {
   val panelColour  = Paint.rgb(52, 58, 76).withAlpha(0.8)
@@ -17,7 +17,8 @@ object HudStyle {
   lazy val font: Font      = Graphics.newFont(12)
   lazy val smallFont: Font = Graphics.newFont(10)
 
-  private def set(colour: Paint, alpha: Double): Unit = Graphics.setColor(colour.r, colour.g, colour.b, colour.a * alpha)
+  private def set(colour: Paint, alpha: Double): Unit =
+    Graphics.setColor(colour.r, colour.g, colour.b, colour.a * alpha)
 
   def paint(colour: RGBColour): Paint = Paint.rgb(colour.red, colour.green, colour.blue)
 
@@ -26,17 +27,33 @@ object HudStyle {
 
   /** Green, then orange, then red (like the frontend's `StatusBar.lifeStatusColor`). */
   def lifeColour(ratio: Double): Paint =
-    if (ratio > 0.5) Paint.rgb(70, 200, 95) else if (ratio > 0.2) Paint.rgb(240, 165, 45) else Paint.rgb(225, 65, 60)
+    if (ratio > 0.5) Paint.rgb(70, 200, 95)
+    else if (ratio > 0.2) Paint.rgb(240, 165, 45)
+    else Paint.rgb(225, 65, 60)
 
   def roundedFill(rect: Rect, radius: Double, colour: Paint, alpha: Double = 1.0): Unit = {
     set(colour, alpha)
     Graphics.rectangle("fill", rect.x, rect.y, rect.width, rect.height, radius, radius)
   }
 
-  def roundedLine(rect: Rect, radius: Double, colour: Paint, lineWidth: Double = 1, alpha: Double = 1.0): Unit = {
+  def roundedLine(
+      rect: Rect,
+      radius: Double,
+      colour: Paint,
+      lineWidth: Double = 1,
+      alpha: Double = 1.0
+  ): Unit = {
     set(colour, alpha)
     Graphics.setLineWidth(lineWidth)
-    Graphics.rectangle("line", rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1, radius, radius)
+    Graphics.rectangle(
+      "line",
+      rect.x + 0.5,
+      rect.y + 0.5,
+      rect.width - 1,
+      rect.height - 1,
+      radius,
+      radius
+    )
     Graphics.setLineWidth(1)
   }
 
@@ -50,7 +67,12 @@ object HudStyle {
 
   /** The glow around the panel of the target. */
   def targetGlow(rect: Rect, radius: Double = 6): Unit = {
-    roundedLine(Rect(rect.x - 3, rect.y - 3, rect.width + 6, rect.height + 6), radius + 3, targetColour.withAlpha(0.3), 4)
+    roundedLine(
+      Rect(rect.x - 3, rect.y - 3, rect.width + 6, rect.height + 6),
+      radius + 3,
+      targetColour.withAlpha(0.3),
+      4
+    )
     roundedLine(rect, radius, targetColour, 2)
   }
 
@@ -60,7 +82,12 @@ object HudStyle {
     roundedFill(rect, radius, trackColour, alpha)
     val width = rect.width * math.max(0.0, math.min(1.0, ratio))
     if (width >= 1) {
-      roundedFill(Rect(rect.x, rect.y, width, rect.height), math.min(radius, width / 2), colour, alpha)
+      roundedFill(
+        Rect(rect.x, rect.y, width, rect.height),
+        math.min(radius, width / 2),
+        colour,
+        alpha
+      )
       // A sheen on the upper part
       if (width > 2) {
         set(Paint(1, 1, 1, 0.2), alpha)
@@ -69,9 +96,17 @@ object HudStyle {
     }
   }
 
-  /** Text with a shadow, vertically centred in `rect`, in `font` (the small one in thin rectangles). */
-  def text(value: String, rect: Rect, align: String = "left", colour: Paint = textColour, alpha: Double = 1.0,
-      padding: Double = 4): Unit = {
+  /** Text with a shadow, vertically centred in `rect`, in `font` (the small one in thin
+    * rectangles).
+    */
+  def text(
+      value: String,
+      rect: Rect,
+      align: String = "left",
+      colour: Paint = textColour,
+      alpha: Double = 1.0,
+      padding: Double = 4
+  ): Unit = {
     val f            = if (rect.height < 15) smallFont else font
     val previousFont = Graphics.getFont()
     Graphics.setFont(f)
@@ -84,5 +119,6 @@ object HudStyle {
     Graphics.setFont(previousFont)
   }
 
-  def ratio(value: Double, max: Double): Double = if (max <= 0) 0 else math.max(0.0, math.min(1.0, value / max))
+  def ratio(value: Double, max: Double): Double =
+    if (max <= 0) 0 else math.max(0.0, math.min(1.0, value / max))
 }
