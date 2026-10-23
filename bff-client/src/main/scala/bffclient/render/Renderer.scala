@@ -2,7 +2,7 @@ package bffclient.render
 
 import bffclient.game.GameClient
 import bffclient.hud.{Hud, HudStyle}
-import bffclient.love.{Graphics, Mouse}
+import bffclient.love.{Graphics, Mouse, Timer}
 import gamelogic.abilities.Ability
 import gamelogic.entities.{Body, Entity, LivingEntity, WithName, WithPosition}
 import gamelogic.entities.WithPosition.Angle
@@ -32,6 +32,7 @@ final class Renderer(client: GameClient) {
   val hud = new Hud(client, () => bossVisuals)
 
   private var cameraPosition = Complex.zero
+  private val frameRate      = FrameRate()
   private var screenWidth    = 800.0
   private var screenHeight   = 600.0
 
@@ -54,6 +55,7 @@ final class Renderer(client: GameClient) {
     )
 
   def draw(): Unit = {
+    frameRate.tick(Timer.getTime())
     val gameState = client.gameState
     val now       = client.serverNow
     val screen    = Graphics.getDimensions()
@@ -320,7 +322,12 @@ final class Renderer(client: GameClient) {
   /** Ping, controls, target and messages (the lives are in the HUD's frames). */
   private def infoLines(gameState: GameState, width: Int): Unit = {
     Graphics.setColor(0, 0, 0)
-    Graphics.print(s"ping: ${client.roundTrip} ms   messages: ${client.messagesReceived}", 10, 72)
+    val fps = frameRate.fps.fold("-")(f => math.round(f).toString)
+    Graphics.print(
+      s"fps: $fps   ping: ${client.roundTrip} ms   messages: ${client.messagesReceived}",
+      10,
+      72
+    )
     val c = client.controls
     Graphics.print(
       s"Move: ${c.upKey.label} ${c.leftKey.label} ${c.downKey.label} ${c.rightKey.label}   " +
