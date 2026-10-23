@@ -14,9 +14,12 @@ object HudStyle {
   val textColour   = Paint.rgb(242, 243, 247)
   val mutedColour  = Paint.rgb(160, 168, 188)
   val targetColour = Paint.rgb(255, 90, 70)
+  val startColour  = Paint.rgb(46, 160, 90)
 
   lazy val font: Font      = Graphics.newFont(12)
   lazy val smallFont: Font = Graphics.newFont(10)
+  lazy val largeFont: Font = Graphics.newFont(20)
+  lazy val hugeFont: Font  = Graphics.newFont(72)
 
   private def set(colour: Paint, alpha: Double): Unit =
     Graphics.setColor(colour.r, colour.g, colour.b, colour.a * alpha)
@@ -98,7 +101,7 @@ object HudStyle {
   }
 
   /** Text with a shadow, vertically centred in `rect`, in `font` (the small one in thin
-    * rectangles).
+    * rectangles), unless another one is given.
     */
   def text(
       value: String,
@@ -106,9 +109,10 @@ object HudStyle {
       align: String = "left",
       colour: Paint = textColour,
       alpha: Double = 1.0,
-      padding: Double = 4
+      padding: Double = 4,
+      textFont: Option[Font] = None
   ): Unit = {
-    val f            = if rect.height < 15 then smallFont else font
+    val f            = textFont.getOrElse(if rect.height < 15 then smallFont else font)
     val previousFont = Graphics.getFont()
     Graphics.setFont(f)
     val y = math.round(rect.y + (rect.height - f.getHeight()) / 2).toDouble

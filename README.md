@@ -254,6 +254,16 @@ mouse over can be toggled, and everything can be reset. They are saved in
 `controls.json`, for the next game (mouse buttons are numbered like in the
 frontend, so the controls of its local storage still work).
 
+Once every player is ready, they can move and place themselves before the boss
+comes: like in the frontend, a "Start game" button is drawn where the boss
+spawns. Clicking it starts a 5 seconds countdown, which every player sees. BFF
+has no countdown (its game server spawns the boss when a player sends
+`LetsBegin`), so its start is shared as a Star marker fixed exactly on the
+boss's spawn point (which nobody can place by hand), the time of its action
+being the start of the countdown. At its end, every client sends `LetsBegin`
+(the first one spawns the boss, the others are ignored), and the marker is
+removed. Headless, the client starts the countdown right away.
+
 During the game, Escape opens a menu with "Resume" (or Escape again),
 "Surrender", "Leave game" and "Quit". The game cannot pause (it is played
 online): it goes on, and the player stops moving. Surrendering (confirmed with a

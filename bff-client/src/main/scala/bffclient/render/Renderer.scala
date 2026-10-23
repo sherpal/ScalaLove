@@ -208,7 +208,7 @@ final class Renderer(client: GameClient) {
     }
 
     // Game markers (put with the marker controls)
-    for (marker, info) <- gameState.markersInfo do {
+    for (marker, info) <- gameState.markersInfo if !client.isCountdownSignal(info) do {
       val markerPosition = info match {
         case GameMarkerInfo.FixedGameMarker(_, gamePosition) => Some(gamePosition)
         case GameMarkerInfo.GameMarkerOnEntity(_, entityId) =>
@@ -349,7 +349,7 @@ final class Renderer(client: GameClient) {
     Graphics.setColor(0, 0, 0)
     val message =
       if gameState.ended then if gameState.playersWon then "Victory!" else "Defeat..."
-      else if !gameState.started then "Waiting for the game to start..."
+      else if !gameState.started && !client.inPreGame then "Waiting for the game to start..."
       else ""
     if message.nonEmpty then Graphics.printf(message, 0, 170, width, "center")
     client.errorMessage.foreach { error =>

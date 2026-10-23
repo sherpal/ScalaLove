@@ -139,10 +139,13 @@ object Main {
         Love.keyreleased = (_, scancode) => if !overlayShown then client.keyReleased(scancode)
         Love.mousepressed = (x, y, button, _, _) =>
           if overlayShown then ui.mousePressed(x, y, button)
-          else if button == 1 then renderer.hud.targetAt(x, y) match {
-            case Some(id) => client.selectTarget(id) // a frame of the HUD
-            case None => client.clicked(renderer.toWorld(x, y))
-          }
+          else if button == 1 then
+            if renderer.hud.startButtonAt(x, y) then client.startCountdown()
+            else
+              renderer.hud.targetAt(x, y) match {
+                case Some(id) => client.selectTarget(id) // a frame of the HUD
+                case None => client.clicked(renderer.toWorld(x, y))
+              }
         Love.mousereleased = (x, y, button, _, _) =>
           if overlayShown then ui.mouseReleased(x, y, button)
           else if button != 1 then

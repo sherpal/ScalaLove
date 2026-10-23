@@ -9,8 +9,8 @@ import boopickle.Default.*
 import communication.BFFPicklers.*
 import gamelogic.abilities.Ability
 import gamelogic.entities.{Body, Entity, LivingEntity}
-import gamelogic.gameextras.GameMarkerInfo
-import gamelogic.gamestate.gameactions.markers.UpdateMarker
+import gamelogic.gameextras.{GameMarker, GameMarkerInfo}
+import gamelogic.gamestate.gameactions.markers.{RemoveMarker, UpdateMarker}
 import gamelogic.gamestate.{ActionGatherer, GameAction, GameState, GreedyActionGatherer}
 import gamelogic.gamestate.gameactions.{EndGame, MovingBodyMoves}
 import gamelogic.physics.Complex
@@ -48,11 +48,28 @@ final class GameClient(
   private var actionsReceived             = 0
   private var bytesReceived               = 0L
   private var clockOffset                 = 0L
+  /** When the boss spawned (our `elapsed`). */
   private var gameBeganAt: Option[Double] = None
 
-  /** Received with our entity id, once every human player is ready. */
-  private var bossPositionReceived = false
-  private var readyToStartSent     = false
+  /** Every player is ready: they can move, until one of them starts the game. */
+  private var everyoneReady = false
+
+  /** Where the boss spawns, and where the "Start game" button is (like in the frontend). */
+  var bossStartingPosition = Option.empty[Complex]
+
+  /** BFF has no countdown before the boss spawns (the game server spawns it when a player sends
+    * `LetsBegin`). Its start is shared with the other players as a Star marker fixed exactly on the
+    * boss's starting position (which nobody can place by hand), and the time of its action, on the
+    * server's clock, is the start of the countdown. At its end, every client sends `LetsBegin`
+    * (once is enough, the others are ignored), and the one which started it removes the marker.
+    */
+  private val countdownMarker    = GameMarker.Star
+  val countdownDuration          = 5000L
+  private var countdownRequested = false
+  private var countdownStartedAt = Option.empty[Long]
+  private var letsBeginSent      = false
+
+  private var readyToStartSent = false
   private var scriptedMovements           = 0
   private var scriptedDirection           = Complex.zero
 
@@ -200,6 +217,46 @@ final class GameClient(
         .foreach(e => targetId = Some(e.id))
   }
 
+  /** Players are placing themselves, before the boss spawns. */
+  def inPreGame: Boolean = everyoneReady && !gameState.started && !finished
+
+  /** Milliseconds before the boss spawns, once someone started the countdown. */
+  def countdownRemaining: Option[Long] =
+    countdownStartedAt
+      .filter(_ => inPreGame)
+      .map(start => math.max(0L, start + countdownDuration - serverNow))
+
+  /** The "Start game" button was clicked. */
+  def startCountdown(): Unit =
+    if inPreGame && !countdownRequested && countdownStartedAt.isEmpty then
+      for position <- bossStartingPosition do {
+        countdownRequested = true
+        val signal = GameMarkerInfo.FixedGameMarker(countdownMarker, position)
+        send(GameActionWrapper(Vector(UpdateMarker(GameAction.Id.dummy, serverNow, signal))))
+      }
+
+  /** The marker which shares the start of the countdown (not drawn). */
+  def isCountdownSignal(info: GameMarkerInfo): Boolean = info match {
+    case GameMarkerInfo.FixedGameMarker(marker, position) =>
+      marker == countdownMarker && bossStartingPosition.contains(position)
+    case _ => false
+  }
+
+  /** Sends `LetsBegin` at the end of the countdown, and notes when the boss spawned. */
+  private def preGame(): Unit = {
+    if headless && inPreGame then startCountdown() // the scripted runs start right away
+    if countdownRemaining.contains(0L) && !letsBeginSent then {
+      letsBeginSent = true
+      println("-> LetsBegin (end of the countdown)")
+      send(LetsBegin)
+    }
+    if gameState.started && gameBeganAt.isEmpty then {
+      gameBeganAt = Some(elapsed)
+      if countdownRequested then
+        send(GameActionWrapper(Vector(RemoveMarker(GameAction.Id.dummy, serverNow, countdownMarker))))
+    }
+  }
+
   send(Ready(user))
 
   /** The game state from the server, with our predicted movement: what we show and play with. */
@@ -317,8 +374,9 @@ final class GameClient(
       if headless then println(status)
     }
 
+    preGame()
     project()
-    if gameBeganAt.isDefined && !finished then {
+    if everyoneReady && !finished then {
       if headless then { scriptedMovement(dt); scriptedCasts() }
       else keyboardMovement(dt)
       project()
@@ -471,7 +529,7 @@ final class GameClient(
     * and which ignores a `ReadyToStart` received before.
     */
   private def readyToStart(): Unit =
-    if myId.isDefined && bossPositionReceived && !readyToStartSent then {
+    if myId.isDefined && bossStartingPosition.isDefined && !readyToStartSent then {
       readyToStartSent = true
       send(ReadyToStart(user))
     }
@@ -483,9 +541,8 @@ final class GameClient(
     case BuddyIsReady(name) =>
       println(s"<- BuddyIsReady($name)")
     case EveryoneIsReady =>
-      println("<- EveryoneIsReady, sending LetsBegin")
-      send(LetsBegin)
-      gameBeganAt = Some(elapsed)
+      println("<- EveryoneIsReady")
+      everyoneReady = true
     case YourEntityIdIs(id) =>
       println(s"<- YourEntityIdIs($id)")
       myId = Some(id)
@@ -493,11 +550,15 @@ final class GameClient(
       readyToStart()
     case StartingBossPosition(x, y) =>
       println(s"<- StartingBossPosition($x, $y)")
-      bossPositionReceived = true
+      bossStartingPosition = Some(Complex(x, y))
       readyToStart()
     case AddAndRemoveActions(toAdd, oldestTimeToRemove, idsToRemove) =>
       actionsReceived += toAdd.length
       gatherer = gatherer.slaveAddAndRemoveActions(toAdd, oldestTimeToRemove, idsToRemove)
+      if countdownStartedAt.isEmpty then
+        countdownStartedAt = toAdd.collectFirst {
+          case UpdateMarker(_, time, info) if isCountdownSignal(info) => time
+        }
       effects.received(toAdd, gatherer.currentGameState, myId)
     case RemoveActions(oldestTime, ids) =>
       gatherer = gatherer.slaveAddAndRemoveActions(Vector.empty, oldestTime, ids)

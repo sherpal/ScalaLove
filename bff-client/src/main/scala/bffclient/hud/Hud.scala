@@ -33,6 +33,11 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
   /** The frames drawn in the last frame, to target by clicking them. */
   private var clickable = Vector.empty[(Rect, Entity.Id)]
 
+  /** Where the "Start game" button was drawn in the last frame. */
+  private var startButton = Option.empty[Rect]
+
+  def startButtonAt(x: Double, y: Double): Boolean = startButton.exists(_.contains(x, y))
+
   /** The entity whose frame is at this position on screen, if any. */
   def targetAt(x: Double, y: Double): Option[Entity.Id] =
     clickable.collectFirst { case (rect, id) if rect.contains(x, y) => id }
@@ -66,11 +71,46 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
     bossFrame(p, width)
     bossCooldowns(p, width)
     threatMeter(p, width, height)
+    preGame(p, width, height)
     for line <- bossVisuals().flatMap(_.hudText(p.gameState)) do {
       val rect = Rect(width - 164, height / 2 - 12, 160, 24)
       panel(rect)
       text(line, rect, "right")
     }
+  }
+
+  /** Before the boss spawns: the "Start game" button where it spawns (like the frontend's), then
+    * the countdown, which every player sees.
+    */
+  private def preGame(p: Painter, width: Double, height: Double): Unit = {
+    startButton = None
+    if client.inPreGame then
+      client.countdownRemaining match {
+        case None =>
+          for position <- client.bossStartingPosition do {
+            val (x, y) = p.toScreen(position)
+            val rect   = Rect(x - 65, y - 20, 130, 40)
+            val shade  = if rect.contains(Mouse.getPosition()) then 0.15 else 0.0
+            roundedFill(rect, 8, startColour.lighter(shade))
+            roundedLine(rect, 8, Paint(0, 0, 0, 0.6), 1)
+            text("Start game", rect, "center", textFont = Some(largeFont))
+            startButton = Some(rect)
+          }
+          val hint = Rect(width / 2 - 300, 40, 600, 28)
+          panel(hint)
+          text("Place yourselves, then click \"Start game\": the boss arrives 5 seconds later", hint, "center")
+        case Some(remaining) =>
+          val seconds = math.ceil(remaining / 1000.0).toInt
+          panel(Rect(width / 2 - 130, height * 0.22 - 6, 260, 130), radius = 10)
+          text("The boss arrives in", Rect(0, height * 0.22, width, 30), "center", textFont = Some(largeFont))
+          text(
+            seconds.toString,
+            Rect(0, height * 0.22 + 30, width, 90),
+            "center",
+            colour = startColour.lighter(0.4),
+            textFont = Some(hugeFont)
+          )
+      }
   }
 
   /** Players, alive or dead, sorted by name (the frontend's `PlayerFrameContainer`). */
