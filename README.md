@@ -244,9 +244,14 @@ mouse over can be toggled, and everything can be reset. They are saved in
 `controls.json`, for the next game (mouse buttons are numbered like in the
 frontend, so the controls of its local storage still work).
 
-During the game, Escape opens a menu with "Resume" (or Escape again), "Leave
-game" and "Quit". The game cannot pause (it is played online): it goes on, and
-the player stops moving. Leaving goes back to the menus; the game's server is
+During the game, Escape opens a menu with "Resume" (or Escape again),
+"Surrender", "Leave game" and "Quit". The game cannot pause (it is played
+online): it goes on, and the player stops moving. Surrendering (confirmed with a
+second click) ends the fight in a defeat for everyone: BFF has no surrender,
+but its game server takes the players' actions as they are, so the client sends
+the game's own `EndGame` action, and the end of the game arrives like any other
+(the frontend's "stop" button kills the game server instead, which the players
+would see as a lost connection). Leaving goes back to the menus; the game's server is
 stopped only if we are its only human player, so that the others go on playing.
 
 When the game ends (or the game server closes the connection), an overlay shows

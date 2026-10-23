@@ -13,7 +13,7 @@ import gamelogic.gameextras.GameMarkerInfo
 import gamelogic.gamestate.gameactions.markers.UpdateMarker
 import gamelogic.entities.classes.Constants
 import gamelogic.gamestate.{ActionGatherer, GameAction, GameState, GreedyActionGatherer}
-import gamelogic.gamestate.gameactions.MovingBodyMoves
+import gamelogic.gamestate.gameactions.{EndGame, MovingBodyMoves}
 import gamelogic.physics.Complex
 import models.bff.ingame.{Controls, InGameWSProtocol, UserInput}
 import models.bff.outofgame.PlayerClasses
@@ -412,6 +412,18 @@ final class GameClient(
 
   /** Closes the connection to the game server (e.g. to go back to the menus). */
   def leave(): Unit = ws.close()
+
+  /** During the fight. */
+  def canSurrender: Boolean = gameState.started && !gameState.ended && ws.isOpen()
+
+  /** Ends the fight, for everyone: BFF has no surrender, but the game server takes the players'
+    * actions as they are, and the game's own `EndGame` ends it (in a defeat, since the boss is alive).
+    * The end of the game then arrives like any other, with its overlay.
+    */
+  def surrender(): Unit = {
+    send(GameActionWrapper(Vector(EndGame(GameAction.Id.dummy, serverNow))))
+    menuOpen = false
+  }
 
   def update(dt: Double): Unit = {
     elapsed += dt
