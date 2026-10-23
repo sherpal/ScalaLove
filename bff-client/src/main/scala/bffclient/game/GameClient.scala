@@ -49,6 +49,10 @@ final class GameClient(
   private var bytesReceived               = 0L
   private var clockOffset                 = 0L
   private var gameBeganAt: Option[Double] = None
+
+  /** Received with our entity id, once every human player is ready. */
+  private var bossPositionReceived = false
+  private var readyToStartSent     = false
   private var scriptedMovements           = 0
   private var scriptedDirection           = Complex.zero
 
@@ -462,13 +466,22 @@ final class GameClient(
       s"boss: [$bosses] me: $me rtt=${roundTrip}ms started=${gameState.started} ended=${gameState.ended}"
   }
 
+  /** Like the frontend (once its assets are loaded), after receiving our entity id and the boss's
+    * position: they come from the game master, which only exists once every human player is ready,
+    * and which ignores a `ReadyToStart` received before.
+    */
+  private def readyToStart(): Unit =
+    if myId.isDefined && bossPositionReceived && !readyToStartSent then {
+      readyToStartSent = true
+      send(ReadyToStart(user))
+    }
+
   private def handle(message: InGameWSProtocol): Unit = message match {
     case AllPlayers(names) =>
       println(s"<- AllPlayers(${names.mkString(", ")})")
       humanPlayers = names.toVector
     case BuddyIsReady(name) =>
       println(s"<- BuddyIsReady($name)")
-      if name == user then send(ReadyToStart(user))
     case EveryoneIsReady =>
       println("<- EveryoneIsReady, sending LetsBegin")
       send(LetsBegin)
@@ -477,8 +490,11 @@ final class GameClient(
       println(s"<- YourEntityIdIs($id)")
       myId = Some(id)
       caster = Some(new AbilityCaster(id))
+      readyToStart()
     case StartingBossPosition(x, y) =>
       println(s"<- StartingBossPosition($x, $y)")
+      bossPositionReceived = true
+      readyToStart()
     case AddAndRemoveActions(toAdd, oldestTimeToRemove, idsToRemove) =>
       actionsReceived += toAdd.length
       gatherer = gatherer.slaveAddAndRemoveActions(toAdd, oldestTimeToRemove, idsToRemove)
