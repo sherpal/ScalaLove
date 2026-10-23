@@ -193,13 +193,14 @@ plugins, Boss 104 and Boss 105 tint the frames of the players with a twin
 debuff or a volatile charge, and Boss 102 counts its hounds.
 
 What is specific to each boss is drawn like the frontend's
-`bossspecificdrawers` (`BossVisuals.scala`): Boss 102's hounds, damage zones
+`bossspecificdrawers`, one `BossVisuals` per boss (package `bosses`): Boss
+102's hounds, damage zones
 and living damage zones (animated); Boss 104's big guys, death marks, debuff
 circles and the finisher's triangle; Boss 105's Shade, the twins' auras and
 bond, its ring, the Skewer's beam, the volatile charges, the reformation points,
 Siphon and Reunion; Sir of Vice's Sacred Ground, Cleansing Nova and Holy Wrath.
-The visuals are chosen by the types of the entities and buffs rather than by
-boss name, so a boss without any (Boss 101, Boss 110) simply has none.
+Like the frontend's `drawerMapping`, the visuals are chosen by boss name (and
+kept once the boss died, for its adds); Boss 101 and Boss 110 have none.
 
 The images are the frontend's: `bffClient/luaLink` copies them from the Battle
 for Flatland checkout (`BFF_DIR`, by default `../BattleForFlatland`) next to

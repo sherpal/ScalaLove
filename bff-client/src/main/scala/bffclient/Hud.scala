@@ -1,6 +1,7 @@
 package bffclient
 
 import bffclient.HudStyle.*
+import bffclient.bosses.BossVisuals
 import bffclient.ui.{Colour as Paint, Rect}
 import gamelogic.abilities.{Ability, WithTargetAbility}
 import gamelogic.entities.{
@@ -24,7 +25,7 @@ import utils.misc.RGBColour
   *
   * Like in the frontend, clicking the frame of a player or of the boss targets it.
   */
-final class Hud(client: GameClient) {
+final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
 
   /** The frames drawn in the last frame, to target by clicking them. */
   private var clickable = Vector.empty[(Rect, Entity.Id)]
@@ -62,7 +63,7 @@ final class Hud(client: GameClient) {
     bossFrame(p, width)
     bossCooldowns(p, width)
     threatMeter(p, width, height)
-    for (line <- BossVisuals.hudText(p.gameState)) {
+    for (line <- bossVisuals().flatMap(_.hudText(p.gameState))) {
       val rect = Rect(width - 164, height / 2 - 12, 160, 24)
       panel(rect)
       text(line, rect, "right")
@@ -110,7 +111,7 @@ final class Hud(client: GameClient) {
     val alpha     = alive.fold(1.0)(inHealingRangeAlpha(p, _))
 
     panel(frame, alpha)
-    for ((colour, opacity) <- BossVisuals.playerFrameTint(gameState, id)) {
+    for ((colour, opacity) <- bossVisuals().flatMap(_.playerFrameTint(gameState, id))) {
       roundedFill(frame, 6, colour.withAlpha(0.6 * opacity), alpha)
       roundedLine(frame.inset(1), 5, colour, 2, alpha)
     }

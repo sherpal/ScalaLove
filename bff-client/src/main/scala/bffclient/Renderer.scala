@@ -14,6 +14,7 @@ import utils.misc.{Colour, RGBColour}
 import gamelogic.gamestate.GameState
 import gamelogic.physics.Complex
 import gamelogic.physics.shape.{Circle, Polygon}
+import bffclient.bosses.BossVisuals
 import bffclient.ui.{Colour as Paint, Rect}
 
 /** Draws the client-side game state with love.graphics, like the Indigo frontend's drawers: camera
@@ -22,8 +23,11 @@ import bffclient.ui.{Colour as Paint, Rect}
   */
 final class Renderer(client: GameClient) {
 
+  /** The visuals of the boss being fought (kept once it died, for its adds that are left). */
+  private var bossVisuals = Option.empty[BossVisuals]
+
   /** Team frames, boss frame, boss cooldowns and threat meter. */
-  val hud = new Hud(client)
+  val hud = new Hud(client, () => bossVisuals)
 
   private var cameraPosition = Complex.zero
   private var screenWidth    = 800.0
@@ -65,6 +69,8 @@ final class Renderer(client: GameClient) {
       new Painter(gameState, now, cameraPosition, screen.width, screen.height, client.smoothing)
     import painter.*
 
+    bossVisuals = BossVisuals.of(gameState).orElse(bossVisuals)
+
     Graphics.setBackgroundColor(200 / 255.0, 200 / 255.0, 200 / 255.0)
 
     // The aztec diamond, as in the Indigo frontend: twice its size, centred on the origin, half
@@ -83,7 +89,7 @@ final class Renderer(client: GameClient) {
     val entities = gameState.entities.values.toList.sortBy(_.id.toString)
 
     // What is specific to the boss, on the ground (zones, auras, beams, ...), under everything
-    BossVisuals.ground(painter)
+    bossVisuals.foreach(_.ground(painter))
 
     // Obstacles
     for (case obstacle: Obstacle <- entities) {
@@ -100,7 +106,7 @@ final class Renderer(client: GameClient) {
     // Other bodies (zones, bullets, adds, ...)
     for (case body: Body <- entities) body match {
       case _: Obstacle | _: BossEntity | _: PlayerClass => ()
-      case drawn if BossVisuals.draws(drawn) => ()
+      case drawn if bossVisuals.exists(_.draws(drawn)) => ()
       case zone: HexagonZone =>
         ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
         ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line");
@@ -124,7 +130,7 @@ final class Renderer(client: GameClient) {
     }
 
     // The adds of the bosses
-    BossVisuals.adds(painter)
+    bossVisuals.foreach(_.adds(painter))
 
     // Bosses
     for (boss <- gameState.bosses.values) {
