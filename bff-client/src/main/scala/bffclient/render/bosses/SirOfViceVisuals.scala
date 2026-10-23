@@ -1,6 +1,6 @@
-package bffclient.bosses
+package bffclient.render.bosses
 
-import bffclient.Painter
+import bffclient.render.Painter
 import bffclient.ui.Colour as Paint
 import gamelogic.abilities.boss.sirofvice.{CleansingNova, HolyWrath, SacredGround}
 import gamelogic.entities.Entity

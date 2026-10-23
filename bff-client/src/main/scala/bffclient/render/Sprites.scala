@@ -1,5 +1,7 @@
-package bffclient
+package bffclient.render
 
+import bffclient.love.{Graphics, Image, Quad}
+import bffclient.lua.Images
 import gamelogic.abilities.Ability
 import gamelogic.buffs.Buff
 

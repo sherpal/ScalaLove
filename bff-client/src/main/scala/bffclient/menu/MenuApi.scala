@@ -1,8 +1,9 @@
-package bffclient
+package bffclient.menu
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.scalajs.js
 
+import bffclient.lua.{WebSocket, WebSocketModule}
 import io.circe.parser.decode
 import menus.data.*
 import models.bff.outofgame.MenuGameWithPlayers

@@ -1,8 +1,9 @@
-package bffclient
+package bffclient.render
 
 import scala.collection.mutable
 import scala.util.Random
 
+import bffclient.love.{Graphics, Timer}
 import gamelogic.abilities.square.Cleave
 import gamelogic.abilities.triangle.DirectHit
 import gamelogic.entities.{Body, Entity}

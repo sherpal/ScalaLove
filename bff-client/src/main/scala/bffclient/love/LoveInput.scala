@@ -1,4 +1,4 @@
-package bffclient
+package bffclient.love
 
 import models.bff.ingame.Controls.{InputCode, KeyCode, KeyInputModifier, ModifiedKeyCode, MouseCode}
 

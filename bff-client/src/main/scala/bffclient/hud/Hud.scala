@@ -1,7 +1,10 @@
-package bffclient
+package bffclient.hud
 
-import bffclient.HudStyle.*
-import bffclient.bosses.BossVisuals
+import bffclient.game.GameClient
+import bffclient.hud.HudStyle.*
+import bffclient.love.{Graphics, Mouse}
+import bffclient.render.bosses.BossVisuals
+import bffclient.render.{Painter, Sprites}
 import bffclient.ui.{Colour as Paint, Rect}
 import gamelogic.abilities.{Ability, WithTargetAbility}
 import gamelogic.entities.{

@@ -1,5 +1,8 @@
-package bffclient
+package bffclient.render
 
+import bffclient.game.GameClient
+import bffclient.hud.{Hud, HudStyle}
+import bffclient.love.{Graphics, Mouse}
 import gamelogic.abilities.Ability
 import gamelogic.entities.{Body, Entity, LivingEntity, WithName, WithPosition}
 import gamelogic.entities.WithPosition.Angle
@@ -13,8 +16,7 @@ import gamelogic.entities.staticstuff.Obstacle
 import utils.misc.{Colour, RGBColour}
 import gamelogic.gamestate.GameState
 import gamelogic.physics.Complex
-import gamelogic.physics.shape.{Circle, Polygon}
-import bffclient.bosses.BossVisuals
+import bffclient.render.bosses.BossVisuals
 import bffclient.ui.{Colour as Paint, Rect}
 
 /** Draws the client-side game state with love.graphics, like the Indigo frontend's drawers: camera

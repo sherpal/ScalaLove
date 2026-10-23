@@ -1,5 +1,7 @@
-package bffclient
+package bffclient.render
 
+import bffclient.hud.HudStyle
+import bffclient.love.Graphics
 import bffclient.ui.{Colour as Paint, Rect}
 import gamelogic.buffs.Buff
 import gamelogic.entities.{Body, Entity, LivingEntity, WithPosition}

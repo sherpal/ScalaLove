@@ -1,6 +1,6 @@
-package bffclient.bosses
+package bffclient.render.bosses
 
-import bffclient.Painter
+import bffclient.render.Painter
 import bffclient.ui.Colour as Paint
 import gamelogic.buffs.boss.boss104.TwinDebuff
 import gamelogic.entities.Entity

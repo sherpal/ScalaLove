@@ -1,6 +1,7 @@
-package bffclient.bosses
+package bffclient.render.bosses
 
-import bffclient.{Graphics, Painter, Sprites}
+import bffclient.love.Graphics
+import bffclient.render.{Painter, Sprites}
 import bffclient.ui.Colour as Paint
 import gamelogic.buffs.boss.boss102.LivingDamageZone
 import gamelogic.entities.Entity

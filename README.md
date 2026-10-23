@@ -112,6 +112,15 @@ sbt bffClient/luaLink bffSimJVM/compile
 tools/bff-online-test.sh
 ```
 
+The client's code (`bff-client/src/main/scala/bffclient`) is organised by
+package: `Main` starts the menus or the game; `game` is the client side of a
+game (`GameClient`, `AbilityCaster`); `render` draws it (`Renderer`, `Painter`,
+`Sprites`, `Effects`, `Smoothing`, and the bosses' visuals in `render.bosses`);
+`hud` draws the HUD and the overlays (game menu, end of game); `controls` loads,
+saves and edits the controls; `menu` holds the menus' screens and the menu
+server's API; `ui` is the UI toolkit; `love` holds the facades of LÖVE's API
+(with `LoveInput`), and `lua` those of our own Lua modules (`src/main/lua`).
+
 The script starts the game server with a one-player Boss 101 game (the game
 info normally sent by the launcher is built by `bffsim.MakeGameInfo`), runs the
 client, and stops everything. With `tools/bff-online-test.sh --window`, the
@@ -193,7 +202,7 @@ plugins, Boss 104 and Boss 105 tint the frames of the players with a twin
 debuff or a volatile charge, and Boss 102 counts its hounds.
 
 What is specific to each boss is drawn like the frontend's
-`bossspecificdrawers`, one `BossVisuals` per boss (package `bosses`): Boss
+`bossspecificdrawers`, one `BossVisuals` per boss (package `render.bosses`): Boss
 102's hounds, damage zones
 and living damage zones (animated); Boss 104's big guys, death marks, debuff
 circles and the finisher's triangle; Boss 105's Shade, the twins' auras and
@@ -219,7 +228,7 @@ types and circe codecs (`MenuApi.scala`). Headless, it does so with
 `BFF_MENU_URL` (with `BFF_HOST`, it connects directly to a game server).
 
 The menus have a UI drawn with love.graphics, replacing the frontend's Laminar
-pages (`MenuScreens.scala`):
+pages (package `menu`, one file per screen):
 
 * **login**: type the menu server's address (`host` or `host:port`, port 9000
   by default; `BFF_MENU_URL` fills it in) and choose a pseudo (validated with

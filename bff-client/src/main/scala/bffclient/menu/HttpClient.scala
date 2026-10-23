@@ -1,9 +1,10 @@
-package bffclient
+package bffclient.menu
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.scalajs.js
 
+import bffclient.lua.{HttpModule, HttpResponse}
 import io.circe.{Decoder, Encoder}
 import io.circe.parser.decode
 import errors.ErrorADT

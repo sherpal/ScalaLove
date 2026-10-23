@@ -1,5 +1,6 @@
-package bffclient
+package bffclient.menu
 
+import bffclient.love.Filesystem
 import io.circe.Codec
 import io.circe.parser.decode
 import io.circe.syntax.*

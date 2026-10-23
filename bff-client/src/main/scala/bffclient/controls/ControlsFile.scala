@@ -1,6 +1,7 @@
-package bffclient
+package bffclient.controls
 
-import io.circe.{Decoder, Encoder}
+import bffclient.love.Filesystem
+import io.circe.Encoder
 import io.circe.parser.parse
 import models.bff.ingame.Controls
 import models.syntax.Pointed

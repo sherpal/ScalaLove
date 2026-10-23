@@ -1,6 +1,6 @@
-package bffclient.bosses
+package bffclient.render.bosses
 
-import bffclient.Painter
+import bffclient.render.Painter
 import bffclient.ui.Colour as Paint
 import gamelogic.abilities.boss.boss105.{Resonance, Reunion, Siphon, Skewer}
 import gamelogic.buffs.boss.boss105.{Mourning, TwinBond, VolatileCharge, Yearning}

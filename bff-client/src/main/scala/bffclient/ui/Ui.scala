@@ -2,7 +2,8 @@ package bffclient.ui
 
 import scala.collection.mutable
 
-import bffclient.{Font, Graphics, Mouse, ScalaLove, Timer}
+import bffclient.love.{Font, Graphics, Mouse, Timer}
+import bffclient.lua.ScalaLove
 
 final case class Rect(x: Double, y: Double, width: Double, height: Double) {
   def right: Double  = x + width

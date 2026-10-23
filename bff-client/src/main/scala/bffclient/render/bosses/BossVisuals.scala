@@ -1,6 +1,6 @@
-package bffclient.bosses
+package bffclient.render.bosses
 
-import bffclient.Painter
+import bffclient.render.Painter
 import bffclient.ui.Colour as Paint
 import gamelogic.entities.{Body, Entity, EntityCastingInfo, LivingEntity}
 import gamelogic.gamestate.GameState

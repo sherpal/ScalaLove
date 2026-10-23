@@ -1,5 +1,6 @@
-package bffclient
+package bffclient.hud
 
+import bffclient.love.{Font, Graphics}
 import bffclient.ui.{Colour as Paint, Rect}
 import utils.misc.RGBColour
 

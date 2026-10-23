@@ -1,5 +1,6 @@
-package bffclient
+package bffclient.controls
 
+import bffclient.love.LoveInput
 import bffclient.ui.*
 import models.bff.ingame.{Controls, GameMarkerControls}
 import models.bff.ingame.Controls.InputCode

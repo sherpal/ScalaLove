@@ -1,4 +1,4 @@
-package bffclient
+package bffclient.render
 
 import gamelogic.entities.{Body, Entity, Moving, WithPosition}
 import gamelogic.entities.WithPosition.Angle

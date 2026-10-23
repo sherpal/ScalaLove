@@ -1,4 +1,4 @@
-package bffclient
+package bffclient.game
 
 import gamelogic.abilities.*
 import gamelogic.abilities.hexagon.*
