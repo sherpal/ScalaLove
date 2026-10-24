@@ -6,7 +6,7 @@ import scala.util.{Failure, Success}
 import bffclient.controls.ControlsFile
 import bffclient.game.{GameAccess, GameClient, GameExit}
 import bffclient.hud.{EndOfGame, GameMenu}
-import bffclient.love.{Event, Love}
+import bffclient.love.{Event, Fullscreen, Love}
 import bffclient.lua.{Os, WebSocketModule}
 import bffclient.menu.{MenuApi, MenuApp, MenuSession}
 import bffclient.render.Renderer
@@ -135,7 +135,9 @@ object Main {
           else if client.menuOpen then ui.frame(gameMenu.draw(ui))
         }
         Love.keypressed = (_, scancode, isRepeat) =>
-          if overlayShown then ui.keyPressed(scancode) else if !isRepeat then client.keyPressed(scancode)
+          if scancode == Fullscreen.key then { if !isRepeat then Fullscreen.toggle() }
+          else if overlayShown then ui.keyPressed(scancode)
+          else if !isRepeat then client.keyPressed(scancode)
         Love.keyreleased = (_, scancode) => if !overlayShown then client.keyReleased(scancode)
         Love.mousepressed = (x, y, button, _, _) =>
           if overlayShown then ui.mousePressed(x, y, button)

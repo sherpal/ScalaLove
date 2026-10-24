@@ -5,7 +5,7 @@ import scala.util.{Failure, Success}
 
 import bffclient.controls.ControlsEditor
 import bffclient.game.{GameAccess, GameExit}
-import bffclient.love.{Graphics, Keyboard, Love, Timer}
+import bffclient.love.{Fullscreen, Graphics, Keyboard, Love, Timer}
 import bffclient.ui.*
 import menus.data.User
 
@@ -55,13 +55,17 @@ final class MenuApp(val server: Option[String], startGame: (GameAccess, GameExit
           case None => screen.draw(ui)
         }
         drawNotification()
+        val (width, height) = size
+        ui.text("F11: fullscreen", width - 140, height - 22, Theme.small, Theme.muted)
       }
     }
     Love.wheelmoved = (_, dy) => ui.wheelMoved(dy)
     Love.mousepressed = (x, y, button, _, _) => ui.mousePressed(x, y, button)
     Love.mousereleased = (x, y, button, _, _) => ui.mouseReleased(x, y, button)
     Love.textinput = text => ui.textInput(text)
-    Love.keypressed = (_, scancode, _) => ui.keyPressed(scancode)
+    Love.keypressed = (_, scancode, isRepeat) =>
+      if scancode == Fullscreen.key then { if !isRepeat then Fullscreen.toggle() }
+      else ui.keyPressed(scancode)
   }
 
   def show(next: Screen): Unit = { screen.leave(); screen = next }

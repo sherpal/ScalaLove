@@ -1,7 +1,7 @@
 package bffclient.hud
 
 import bffclient.game.GameClient
-import bffclient.love.Graphics
+import bffclient.love.{Fullscreen, Graphics}
 import bffclient.ui.*
 
 /** The game menu, opened with Escape during the game. The game cannot be paused (it is played
@@ -16,7 +16,7 @@ final class GameMenu(client: GameClient, leaveGame: Option[() => Unit]) {
     val (width, height) = (screen.width.toDouble, screen.height.toDouble)
     ui.fill(Rect(0, 0, width, height), Theme.background.withAlpha(0.5))
     val canSurrender = client.canSurrender
-    val buttonCount  = 2 + Seq(canSurrender, leaveGame.isDefined).count(identity)
+    val buttonCount  = 3 + Seq(canSurrender, leaveGame.isDefined).count(identity)
     val box = Rect(width / 2 - 180, height / 2 - 70 - 30 * buttonCount, 360, 140 + 60 * buttonCount)
     ui.panel(box)
     ui.textIn("Menu", Rect(box.x, box.y + 16, box.width, 50), Theme.title)
@@ -49,6 +49,8 @@ final class GameMenu(client: GameClient, leaveGame: Option[() => Unit]) {
         confirmingSurrender = !confirmingSurrender
       }
     }
+    if button(if Fullscreen.isOn then "Windowed (F11)" else "Fullscreen (F11)", ButtonStyle.Normal) then
+      Fullscreen.toggle()
     leaveGame.foreach(leave => if button("Leave game", ButtonStyle.Normal) then leave())
     if button("Quit", ButtonStyle.Danger) then client.quit()
   }

@@ -88,7 +88,7 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
       client.countdownRemaining match {
         case None =>
           for position <- client.bossStartingPosition do {
-            val (x, y) = p.toScreen(position)
+            val (x, y) = p.toWindow(position)
             val rect   = Rect(x - 65, y - 20, 130, 40)
             val shade  = if rect.contains(Mouse.getPosition()) then 0.15 else 0.0
             roundedFill(rect, 8, startColour.lighter(shade))

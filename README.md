@@ -264,8 +264,13 @@ being the start of the countdown. At its end, every client sends `LetsBegin`
 (the first one spawns the boss, the others are ignored), and the marker is
 removed. Headless, the client starts the countdown right away.
 
+The window can be resized, and F11 (or the game menu) makes it fullscreen. The
+world is scaled to show as much of it as in the original 1200 x 800 window (more
+in the longer direction), while the HUD and the menus keep their size, at the
+window's edges.
+
 During the game, Escape opens a menu with "Resume" (or Escape again),
-"Surrender", "Leave game" and "Quit". The game cannot pause (it is played
+"Surrender", "Fullscreen", "Leave game" and "Quit". The game cannot pause (it is played
 online): it goes on, and the player stops moving. Surrendering (confirmed with a
 second click) ends the fight in a defeat for everyone: BFF has no surrender,
 but its game server takes the players' actions as they are, so the client sends

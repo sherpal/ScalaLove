@@ -59,6 +59,11 @@ object Graphics extends js.Object {
   def printf(text: String, x: Double, y: Double, limit: Double, align: String): Unit = js.native
   def getDimensions(): (width: Int, height: Int)                                     = js.native
 
+  /** Saves the current transformation (see `scale`), until `pop`. */
+  def push(): Unit                  = js.native
+  def pop(): Unit                   = js.native
+  def scale(factor: Double): Unit   = js.native
+
   /** Draws the image at (x, y), turned by `r` (clockwise), scaled, with origin (ox, oy) in the
     * image.
     */
@@ -134,6 +139,14 @@ object Keyboard extends js.Object {
   def isDown(key: String): Boolean              = js.native
   def isScancodeDown(scancode: String): Boolean = js.native
   def setKeyRepeat(enable: Boolean): Unit       = js.native
+}
+
+@js.native @JSGlobal("love.window")
+object Window extends js.Object {
+
+  /** `fullscreenType`: "desktop" (at the desktop's resolution) or "exclusive". */
+  def setFullscreen(fullscreen: Boolean, fullscreenType: String): Boolean = js.native
+  def getFullscreen(): (fullscreen: Boolean, fullscreenType: String)       = js.native
 }
 
 @js.native @JSGlobal("love.timer")

@@ -33,12 +33,14 @@ final class Renderer(client: GameClient) {
 
   private var cameraPosition = Complex.zero
   private val frameRate      = FrameRate()
-  private var screenWidth    = 800.0
-  private var screenHeight   = 600.0
+  /** The world is drawn as on a screen of this size (scaled), and the HUD at the window's size. */
+  private var screenWidth  = Renderer.referenceWidth
+  private var screenHeight = Renderer.referenceHeight
+  private var worldScale   = 1.0
 
-  /** Screen (pixels) to world coordinates, with the camera of the last frame. */
+  /** Window (pixels) to world coordinates, with the camera of the last frame. */
   def toWorld(x: Double, y: Double): Complex =
-    cameraPosition + Complex(x - screenWidth / 2, screenHeight / 2 - y)
+    cameraPosition + Complex(x / worldScale - screenWidth / 2, screenHeight / 2 - y / worldScale)
 
   def mouseWorld: Complex = {
     val mouse = Mouse.getPosition()
@@ -59,8 +61,10 @@ final class Renderer(client: GameClient) {
     val gameState = client.gameState
     val now       = client.serverNow
     val screen    = Graphics.getDimensions()
-    screenWidth = screen.width
-    screenHeight = screen.height
+    // As much of the world as in the reference window, or more in the longer direction
+    worldScale = math.min(screen.width / Renderer.referenceWidth, screen.height / Renderer.referenceHeight)
+    screenWidth = screen.width / worldScale
+    screenHeight = screen.height / worldScale
 
     // Camera: our player, or the boss once we are dead
     val me = client.myId.flatMap(gameState.players.get)
@@ -70,8 +74,10 @@ final class Renderer(client: GameClient) {
       .getOrElse(cameraPosition)
 
     val painter =
-      new Painter(gameState, now, cameraPosition, screen.width, screen.height, client.smoothing)
+      new Painter(gameState, now, cameraPosition, screenWidth, screenHeight, client.smoothing, worldScale)
     import painter.*
+    Graphics.push()
+    Graphics.scale(worldScale)
 
     bossVisuals = BossVisuals.of(gameState).orElse(bossVisuals)
 
@@ -236,6 +242,8 @@ final class Renderer(client: GameClient) {
       Graphics.circle("fill", x, y, 45)
     }
 
+    Graphics.pop()
+
     infoLines(gameState, screen.width)
     hud.draw(painter, screen.width, screen.height)
     actionBar(gameState, now, screen.width, screen.height)
@@ -368,4 +376,11 @@ final class Renderer(client: GameClient) {
       Graphics.printf("Click to place the zone (Escape to cancel)", 0, 210, width, "center")
     }
   }
+}
+
+object Renderer {
+
+  /** The window's size in `conf.lua`: the world is scaled to show as much of it in any window. */
+  val referenceWidth  = 1200.0
+  val referenceHeight = 800.0
 }

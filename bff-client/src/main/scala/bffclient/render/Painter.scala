@@ -19,7 +19,9 @@ final class Painter(
     cameraPosition: Complex,
     screenWidth: Double,
     screenHeight: Double,
-    smoothing: Smoothing
+    smoothing: Smoothing,
+    /** Window pixels per screen pixel (the world is drawn scaled, see [[Renderer]]). */
+    val scale: Double = 1.0
 ) {
 
   def position(entity: WithPosition): Complex = smoothing.position(entity, now)
@@ -28,6 +30,12 @@ final class Painter(
   def toScreen(z: Complex): (Double, Double) = {
     val d = z - cameraPosition
     (screenWidth / 2.0 + d.re, screenHeight / 2.0 - d.im)
+  }
+
+  /** Where the point is in the window (e.g. to draw the HUD there, which is not scaled). */
+  def toWindow(z: Complex): (Double, Double) = {
+    val (x, y) = toScreen(z)
+    (x * scale, y * scale)
   }
 
   def polygonCoords(points: Iterable[Complex]): Seq[Double] =
