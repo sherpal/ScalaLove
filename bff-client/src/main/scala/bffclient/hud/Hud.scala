@@ -28,7 +28,7 @@ import utils.misc.RGBColour
   *
   * Like in the frontend, clicking the frame of a player or of the boss targets it.
   */
-final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
+final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals], scale: Double = 1.0) {
 
   /** The frames drawn in the last frame, to target by clicking them. */
   private var clickable = Vector.empty[(Rect, Entity.Id)]
@@ -36,11 +36,11 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
   /** Where the "Start game" button was drawn in the last frame. */
   private var startButton = Option.empty[Rect]
 
-  def startButtonAt(x: Double, y: Double): Boolean = startButton.exists(_.contains(x, y))
+  def startButtonAt(x: Double, y: Double): Boolean = startButton.exists(_.contains(x / scale, y / scale))
 
   /** The entity whose frame is at this position on screen, if any. */
   def targetAt(x: Double, y: Double): Option[Entity.Id] =
-    clickable.collectFirst { case (rect, id) if rect.contains(x, y) => id }
+    clickable.collectFirst { case (rect, id) if rect.contains(x / scale, y / scale) => id }
 
   /** The entity whose frame is under the mouse (for "mouse over" in the controls). */
   def hovered: Option[Entity.Id] = {
@@ -49,12 +49,16 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
   }
 
   /** Lightens the frame under the mouse (like the frontend's `HoverHighlight`). */
-  private def hoverHighlight(rect: Rect, radius: Double = 6): Unit = {
-    val mouse = Mouse.getPosition()
-    if rect.contains(mouse.x, mouse.y) then {
+  private def hoverHighlight(rect: Rect, radius: Double = 6): Unit =
+    if mouseOver(rect) then {
       roundedFill(rect, radius, Paint(1, 1, 1, 0.1))
       roundedLine(rect, radius, Paint(1, 1, 1, 0.5), 1)
     }
+
+  /** The HUD is drawn at its scale (the mouse is in window pixels). */
+  private def mouseOver(rect: Rect): Boolean = {
+    val mouse = Mouse.getPosition()
+    rect.contains(mouse.x / scale, mouse.y / scale)
   }
 
   private val frameHeight = 64.0
@@ -89,11 +93,11 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
         case None =>
           for position <- client.bossStartingPosition do {
             val (x, y) = p.toWindow(position)
-            val rect   = Rect(x - 65, y - 20, 130, 40)
-            val shade  = if rect.contains(Mouse.getPosition()) then 0.15 else 0.0
+            val rect   = Rect(x / scale - 65, y / scale - 20, 130, 40)
+            val shade  = if mouseOver(rect) then 0.15 else 0.0
             roundedFill(rect, 8, startColour.lighter(shade))
             roundedLine(rect, 8, Paint(0, 0, 0, 0.6), 1)
-            text("Start game", rect, "center", textFont = Some(largeFont))
+            text("Start game", rect, "center", textSize = Some(largeSize))
             startButton = Some(rect)
           }
           val hint = Rect(width / 2 - 300, 40, 600, 28)
@@ -102,13 +106,13 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals]) {
         case Some(remaining) =>
           val seconds = math.ceil(remaining / 1000.0).toInt
           panel(Rect(width / 2 - 130, height * 0.22 - 6, 260, 130), radius = 10)
-          text("The boss arrives in", Rect(0, height * 0.22, width, 30), "center", textFont = Some(largeFont))
+          text("The boss arrives in", Rect(0, height * 0.22, width, 30), "center", textSize = Some(largeSize))
           text(
             seconds.toString,
             Rect(0, height * 0.22 + 30, width, 90),
             "center",
             colour = startColour.lighter(0.4),
-            textFont = Some(hugeFont)
+            textSize = Some(hugeSize)
           )
       }
   }

@@ -3,36 +3,37 @@ package bffclient.render
 import bffclient.game.GameClient
 import bffclient.hud.{Hud, HudStyle}
 import bffclient.love.{Graphics, Mouse, Timer}
+import bffclient.render.bosses.BossVisuals
+import bffclient.ui.{Colour as Paint, Rect}
 import gamelogic.abilities.Ability
-import gamelogic.entities.{Body, Entity, LivingEntity, WithName, WithPosition}
 import gamelogic.entities.WithPosition.Angle
-import gamelogic.gameextras.GameMarkerInfo
 import gamelogic.entities.boss.BossEntity
 import gamelogic.entities.classes.PlayerClass
 import gamelogic.entities.classes.hexagon.HexagonZone
 import gamelogic.entities.classes.pentagon.PentagonZone
 import gamelogic.entities.movingstuff.PentagonBullet
 import gamelogic.entities.staticstuff.Obstacle
-import utils.misc.{Colour, RGBColour}
+import gamelogic.entities.{Body, Entity, LivingEntity, WithPosition}
+import gamelogic.gameextras.GameMarkerInfo
 import gamelogic.gamestate.GameState
 import gamelogic.physics.Complex
-import bffclient.render.bosses.BossVisuals
-import bffclient.ui.{Colour as Paint, Rect}
+import utils.misc.{Colour, RGBColour}
 
 /** Draws the client-side game state with love.graphics, like the Indigo frontend's drawers: camera
   * centred on our player (y axis pointing up), obstacles, what is specific to the boss
   * (`BossVisuals`), zones, boss, players, and every other body as an outline.
   */
-final class Renderer(client: GameClient) {
+final class Renderer(client: GameClient, hudScale: Double = 1.0) {
 
   /** The visuals of the boss being fought (kept once it died, for its adds that are left). */
   private var bossVisuals = Option.empty[BossVisuals]
 
   /** Team frames, boss frame, boss cooldowns and threat meter. */
-  val hud = new Hud(client, () => bossVisuals)
+  val hud = new Hud(client, () => bossVisuals, hudScale)
 
   private var cameraPosition = Complex.zero
   private val frameRate      = FrameRate()
+
   /** The world is drawn as on a screen of this size (scaled), and the HUD at the window's size. */
   private var screenWidth  = Renderer.referenceWidth
   private var screenHeight = Renderer.referenceHeight
@@ -62,7 +63,8 @@ final class Renderer(client: GameClient) {
     val now       = client.serverNow
     val screen    = Graphics.getDimensions()
     // As much of the world as in the reference window, or more in the longer direction
-    worldScale = math.min(screen.width / Renderer.referenceWidth, screen.height / Renderer.referenceHeight)
+    worldScale =
+      math.min(screen.width / Renderer.referenceWidth, screen.height / Renderer.referenceHeight)
     screenWidth = screen.width / worldScale
     screenHeight = screen.height / worldScale
 
@@ -74,7 +76,15 @@ final class Renderer(client: GameClient) {
       .getOrElse(cameraPosition)
 
     val painter =
-      new Painter(gameState, now, cameraPosition, screenWidth, screenHeight, client.smoothing, worldScale)
+      Painter(
+        gameState,
+        now,
+        cameraPosition,
+        screenWidth,
+        screenHeight,
+        client.smoothing,
+        worldScale
+      )
     import painter.*
     Graphics.push()
     Graphics.scale(worldScale)
@@ -114,30 +124,31 @@ final class Renderer(client: GameClient) {
       Graphics.setColor(colour.red / 255.0, colour.green / 255.0, colour.blue / 255.0, alpha)
 
     // Other bodies (zones, bullets, adds, ...)
-    for case body: Body <- entities do body match {
-      case _: Obstacle | _: BossEntity | _: PlayerClass => ()
-      case drawn if bossVisuals.exists(_.draws(drawn)) => ()
-      case zone: HexagonZone =>
-        ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
-        ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line");
-        Graphics.setLineWidth(1)
-      case zone: PentagonZone =>
-        ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
-        ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line");
-        Graphics.setLineWidth(1)
-      case bullet: PentagonBullet =>
-        ownerColour(RGBColour.fromIntColour(bullet.colour), 1)
-        drawShape(bullet, "fill")
-      case other =>
-        Graphics.setColor(0.2, 0.2, 0.2)
-        drawShape(other, "line")
-        other match {
-          case living: LivingEntity =>
-            lifeBar(living.asInstanceOf[LivingEntity & Body])
-            buffIcons(living.asInstanceOf[LivingEntity & Body])
-          case _ => ()
-        }
-    }
+    for case body: Body <- entities do
+      body match {
+        case _: Obstacle | _: BossEntity | _: PlayerClass => ()
+        case drawn if bossVisuals.exists(_.draws(drawn)) => ()
+        case zone: HexagonZone =>
+          ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
+          ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line");
+          Graphics.setLineWidth(1)
+        case zone: PentagonZone =>
+          ownerColour(zone.colour, 0.3); drawShape(zone, "fill")
+          ownerColour(zone.colour, 1); Graphics.setLineWidth(2); drawShape(zone, "line");
+          Graphics.setLineWidth(1)
+        case bullet: PentagonBullet =>
+          ownerColour(RGBColour.fromIntColour(bullet.colour), 1)
+          drawShape(bullet, "fill")
+        case other =>
+          Graphics.setColor(0.2, 0.2, 0.2)
+          drawShape(other, "line")
+          other match {
+            case living: LivingEntity =>
+              lifeBar(living.asInstanceOf[LivingEntity & Body])
+              buffIcons(living.asInstanceOf[LivingEntity & Body])
+            case _ => ()
+          }
+      }
 
     // The adds of the bosses
     bossVisuals.foreach(_.adds(painter))
@@ -244,15 +255,20 @@ final class Renderer(client: GameClient) {
 
     Graphics.pop()
 
-    infoLines(gameState, screen.width)
-    hud.draw(painter, screen.width, screen.height)
-    actionBar(gameState, now, screen.width, screen.height)
+    // The HUD, at its own scale (the `hudScale` setting) whatever the window's size: it is placed
+    // at the edges of a window of this size, which are the window's once scaled
+    val (hudWidth, hudHeight) = (screen.width / hudScale, screen.height / hudScale)
+    HudStyle.scaled(hudScale) {
+      infoLines(gameState, hudWidth)
+      hud.draw(painter, hudWidth, hudHeight)
+      actionBar(gameState, now, hudWidth, hudHeight)
+    }
   }
 
   /** Our abilities, in the [[HudStyle]]: icon (pushed down just after it is used, darkened from the
     * top during its cooldown, like the frontend's), key, name and remaining cooldown.
     */
-  private def actionBar(gameState: GameState, now: Long, width: Int, height: Int): Unit =
+  private def actionBar(gameState: GameState, now: Long, width: Double, height: Double): Unit =
     for
       id <- client.myId
       me <- gameState.players.get(id)
@@ -328,39 +344,15 @@ final class Renderer(client: GameClient) {
     }
 
   /** Ping, controls, target and messages (the lives are in the HUD's frames). */
-  private def infoLines(gameState: GameState, width: Int): Unit = {
+  private def infoLines(gameState: GameState, width: Double): Unit = {
     Graphics.setColor(0, 0, 0)
     val fps = frameRate.fps.fold("-")(f => math.round(f).toString)
-    Graphics.print(
+    HudStyle.print(
       s"fps: $fps   ping: ${client.roundTrip} ms   messages: ${client.messagesReceived}",
       10,
-      72
+      72,
+      width - 20
     )
-    val c = client.controls
-    Graphics.print(
-      s"Move: ${c.upKey.label} ${c.leftKey.label} ${c.downKey.label} ${c.rightKey.label}   " +
-        s"Next target: ${c.nextTargetKey.label} (or click)   " +
-        s"Face target: ${c.targetLockInToggleKey.label} (${
-            if client.lockInToTarget then "on"
-            else "off"
-          })   " +
-        s"Mouse over: ${if c.mouseOverEnabled then "on" else "off"}   Escape: menu",
-      10,
-      90
-    )
-    val target = client.currentTarget
-      .flatMap(gameState.entities.get)
-      .collect { case l: LivingEntity => l }
-      .fold("Target: none") { t =>
-        val name = t match {
-          case named: WithName => named.name
-          case other => other.getClass.getSimpleName
-        }
-        s"Target: $name (${math.round(t.life)} / ${math.round(t.maxLife)})"
-      }
-    Graphics.print(target, 10, 108)
-    Graphics.setColor(0.3, 0.3, 0.3)
-    Graphics.print(client.controlsInfo, 10, 126)
     Graphics.setColor(0, 0, 0)
     val message =
       if gameState.ended then if gameState.playersWon then "Victory!" else "Defeat..."
@@ -381,6 +373,6 @@ final class Renderer(client: GameClient) {
 object Renderer {
 
   /** The window's size in `conf.lua`: the world is scaled to show as much of it in any window. */
-  val referenceWidth  = 1200.0
-  val referenceHeight = 800.0
+  private val referenceWidth  = 1200.0
+  private val referenceHeight = 800.0
 }

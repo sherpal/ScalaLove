@@ -269,6 +269,13 @@ world is scaled to show as much of it as in the original 1200 x 800 window (more
 in the longer direction), while the HUD and the menus keep their size, at the
 window's edges.
 
+The size of the HUD (frames, boss frame, cooldowns, threat meter, cast bar,
+action bar, ...) is a setting, from 0.5 to 2, in the controls ("HUD scale"),
+saved in `settings.json` (BFF's `Controls` cannot hold it). The HUD is drawn
+under that scale, as in a window as much smaller or bigger, so that it stays at
+the window's edges; its texts are drawn with fonts of the scaled size, so that
+they stay sharp.
+
 During the game, Escape opens a menu with "Resume" (or Escape again),
 "Surrender", "Fullscreen", "Leave game" and "Quit". The game cannot pause (it is played
 online): it goes on, and the player stops moving. Surrendering (confirmed with a

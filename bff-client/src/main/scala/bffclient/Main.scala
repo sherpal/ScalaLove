@@ -3,7 +3,7 @@ package bffclient
 import scala.concurrent.ExecutionContext
 import scala.util.{Failure, Success}
 
-import bffclient.controls.ControlsFile
+import bffclient.controls.{ClientSettings, ControlsFile}
 import bffclient.game.{GameAccess, GameClient, GameExit}
 import bffclient.hud.{EndOfGame, GameMenu}
 import bffclient.love.{Event, Fullscreen, Love}
@@ -118,15 +118,15 @@ object Main {
           () => renderer.hud.hovered,
           lag
         )
-        renderer = new Renderer(client)
+        renderer = Renderer(client, ClientSettings.load().hudScale)
         // While an overlay is shown (game menu, end of game), the inputs go to it
         val ui    = new Ui
         val leave =
           backToMenus.map { back => () =>
             val exit = client.exit; client.leave(); back(exit)
           }
-        val gameMenu     = new GameMenu(client, leave)
-        val endOfGame    = new EndOfGame(client, leave)
+        val gameMenu     = GameMenu(client, leave)
+        val endOfGame    = EndOfGame(client, leave)
         def overlayShown = client.finished || client.menuOpen
         Love.update = dt => client.update(dt)
         Love.draw = () => {

@@ -1,5 +1,7 @@
 package bffclient.hud
 
+import scala.collection.mutable
+
 import bffclient.love.{Font, Graphics}
 import bffclient.ui.{Colour as Paint, Rect}
 import utils.misc.RGBColour
@@ -16,10 +18,63 @@ object HudStyle {
   val targetColour = Paint.rgb(255, 90, 70)
   val startColour  = Paint.rgb(46, 160, 90)
 
-  lazy val font: Font      = Graphics.newFont(12)
-  lazy val smallFont: Font = Graphics.newFont(10)
-  lazy val largeFont: Font = Graphics.newFont(20)
-  lazy val hugeFont: Font  = Graphics.newFont(72)
+  /** Text sizes, in pixels at scale 1. */
+  val normalSize = 12
+  val smallSize  = 10
+  val largeSize  = 20
+  val hugeSize   = 72
+
+  /** The scale of the HUD while it is drawn (see [[scaled]]). */
+  private var currentScale = 1.0
+
+  private val fonts = mutable.Map.empty[Int, Font]
+
+  private def fontOfSize(pixels: Int): Font =
+    fonts.getOrElseUpdate(pixels, Graphics.newFont(pixels))
+
+  private def scaledFont(size: Int): Font =
+    fontOfSize(math.max(1, math.round(size * currentScale).toInt))
+
+  /** Draws the HUD at this scale (the `hudScale` setting). Its texts are drawn with fonts of the
+    * scaled size, rather than scaled, so that they stay sharp.
+    */
+  def scaled(scale: Double)(draw: => Unit): Unit = {
+    currentScale = scale
+    Graphics.push()
+    Graphics.scale(scale)
+    try draw
+    finally {
+      Graphics.pop()
+      currentScale = 1.0
+    }
+  }
+
+  /** The height of a line of text of `size` pixels, in the HUD's coordinates. */
+  def lineHeight(size: Int = normalSize): Double = scaledFont(size).getHeight() / currentScale
+
+  /** Text at (x, y), in the HUD's coordinates, in the current colour, sharp at any scale. */
+  def print(
+      value: String,
+      x: Double,
+      y: Double,
+      limit: Double,
+      align: String = "left",
+      size: Int = normalSize
+  ): Unit = {
+    val previousFont = Graphics.getFont()
+    Graphics.setFont(scaledFont(size))
+    Graphics.push()
+    Graphics.scale(1 / currentScale)
+    Graphics.printf(
+      value,
+      math.round(x * currentScale).toDouble,
+      math.round(y * currentScale).toDouble,
+      limit * currentScale,
+      align
+    )
+    Graphics.pop()
+    Graphics.setFont(previousFont)
+  }
 
   private def set(colour: Paint, alpha: Double): Unit =
     Graphics.setColor(colour.r, colour.g, colour.b, colour.a * alpha)
@@ -100,7 +155,7 @@ object HudStyle {
     }
   }
 
-  /** Text with a shadow, vertically centred in `rect`, in `font` (the small one in thin
+  /** Text with a shadow, vertically centred in `rect`, of the normal size (small in thin
     * rectangles), unless another one is given.
     */
   def text(
@@ -110,18 +165,16 @@ object HudStyle {
       colour: Paint = textColour,
       alpha: Double = 1.0,
       padding: Double = 4,
-      textFont: Option[Font] = None
+      textSize: Option[Int] = None
   ): Unit = {
-    val f            = textFont.getOrElse(if rect.height < 15 then smallFont else font)
-    val previousFont = Graphics.getFont()
-    Graphics.setFont(f)
-    val y = math.round(rect.y + (rect.height - f.getHeight()) / 2).toDouble
-    val x = math.round(rect.x + padding).toDouble
+    val size  = textSize.getOrElse(if rect.height < 15 then smallSize else normalSize)
+    val y     = rect.y + (rect.height - lineHeight(size)) / 2
+    val x     = rect.x + padding
+    val limit = rect.width - 2 * padding
     set(Paint(0, 0, 0, 0.7), alpha)
-    Graphics.printf(value, x + 1, y + 1, rect.width - 2 * padding, align)
+    print(value, x + 1, y + 1, limit, align, size)
     set(colour, alpha)
-    Graphics.printf(value, x, y, rect.width - 2 * padding, align)
-    Graphics.setFont(previousFont)
+    print(value, x, y, limit, align, size)
   }
 
   def ratio(value: Double, max: Double): Double =

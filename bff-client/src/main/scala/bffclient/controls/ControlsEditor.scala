@@ -14,6 +14,7 @@ import models.syntax.Pointed
   */
 final class ControlsEditor(close: () => Unit) {
   private var controls = ControlsFile.load()._1
+  private var settings = ClientSettings.load()
   private var error    = Option.empty[String]
 
   /** The action whose binding is being changed, and how to change it. */
@@ -139,6 +140,27 @@ final class ControlsEditor(close: () => Unit) {
       "Abilities fall back to the frame under the mouse when the target is not valid for them.",
       box.x + 470,
       toggleY + 28,
+      390,
+      Theme.small,
+      Theme.muted
+    )
+
+    // The client's settings (BFF's controls cannot hold them)
+    val scaleY = toggleY + 72
+    ui.text("HUD scale", box.x + 470, scaleY + 4)
+    ui.selector(
+      ClientSettings.hudScales,
+      settings.hudScale,
+      Rect(box.x + 660, scaleY, 200, 26),
+      (scale: Double) => f"$scale%.1f"
+    ).foreach { scale =>
+      settings = settings.copy(hudScale = scale)
+      error = settings.save()
+    }
+    ui.paragraph(
+      "The size of the frames and of the action bar, whatever the window's size.",
+      box.x + 470,
+      scaleY + 32,
       390,
       Theme.small,
       Theme.muted
