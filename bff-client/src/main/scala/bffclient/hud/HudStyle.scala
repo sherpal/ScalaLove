@@ -3,6 +3,7 @@ package bffclient.hud
 import scala.collection.mutable
 
 import bffclient.love.{Font, Graphics}
+import bffclient.lua.ScalaLove
 import bffclient.ui.{Colour as Paint, Rect}
 import utils.misc.RGBColour
 
@@ -21,6 +22,7 @@ object HudStyle {
   /** Text sizes, in pixels at scale 1. */
   val normalSize = 12
   val smallSize  = 10
+  val titleSize  = 14
   val largeSize  = 20
   val hugeSize   = 72
 
@@ -51,6 +53,10 @@ object HudStyle {
 
   /** The height of a line of text of `size` pixels, in the HUD's coordinates. */
   def lineHeight(size: Int = normalSize): Double = scaledFont(size).getHeight() / currentScale
+
+  /** The lines of `value` wrapped at `width` (in the HUD's coordinates), in a font of `size`. */
+  def wrap(value: String, width: Double, size: Int = normalSize): Seq[String] =
+    ScalaLove.fromLuaSequence(scaledFont(size).getWrap(value, width * currentScale).lines).toSeq
 
   /** Text at (x, y), in the HUD's coordinates, in the current colour, sharp at any scale. */
   def print(

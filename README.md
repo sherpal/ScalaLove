@@ -178,8 +178,11 @@ damage we deal), green numbers for our heals, the square's cleave and the swing
 of the triangle's direct hit. Each action has its effects once, even when the
 server sends it again. The numbers follow their entity. Hexagon and pentagon
 zones are drawn in their owner's colour, and pentagon bullets too. The action
-bar shows the frontend's ability icons, darkened from the top during their
-cooldown and pushed down for a moment when used. Above each player, boss and add, the icons
+bar (`hud/ActionBar.scala`) shows the frontend's ability icons in frames, with
+their key in a corner, darkened from the top during their cooldown (with the
+remaining seconds) and pushed down for a moment when used. Hovering one shows a
+tooltip with its name, cast time, cooldown, cost and what it does (BFF's
+`AbilityDoc`, as in the lobby's documentation). Above each player, boss and add, the icons
 of their buffs and debuffs (the frontend's, oldest first), darkened by the part
 of their duration that remains. The permanent buffs that every player of a class
 has (the square's shield, the resource fillers) are not shown.

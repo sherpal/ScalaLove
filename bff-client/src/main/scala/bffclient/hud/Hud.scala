@@ -63,8 +63,10 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals], scal
 
   private val frameHeight = 64.0
 
+  private val actionBar = new ActionBar(client, mouseOver)
+
   /** Where our frame and our target's are (above the action bar). */
-  private def bottomFramesTop(height: Double): Double = height - 64 - 8 - frameHeight
+  private def bottomFramesTop(height: Double): Double = actionBar.top(height) - 8 - frameHeight
 
   def draw(p: Painter, width: Double, height: Double): Unit = {
     clickable = Vector.empty
@@ -81,6 +83,7 @@ final class Hud(client: GameClient, bossVisuals: () => Option[BossVisuals], scal
       panel(rect)
       text(line, rect, "right")
     }
+    actionBar.draw(p.gameState, p.now, width, height) // last: its tooltips are over the rest
   }
 
   /** Before the boss spawns: the "Start game" button where it spawns (like the frontend's), then

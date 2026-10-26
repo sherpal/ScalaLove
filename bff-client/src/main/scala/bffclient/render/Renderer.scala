@@ -4,7 +4,6 @@ import bffclient.game.GameClient
 import bffclient.hud.{Hud, HudStyle}
 import bffclient.love.{Graphics, Mouse, Timer}
 import bffclient.render.bosses.BossVisuals
-import bffclient.ui.{Colour as Paint, Rect}
 import gamelogic.abilities.Ability
 import gamelogic.entities.WithPosition.Angle
 import gamelogic.entities.boss.BossEntity
@@ -47,15 +46,6 @@ final class Renderer(client: GameClient, hudScale: Double = 1.0) {
     val mouse = Mouse.getPosition()
     toWorld(mouse.x, mouse.y)
   }
-
-  private val abilityNamesCache =
-    scala.collection.mutable.Map.empty[String, Map[Ability.AbilityId, String]]
-
-  private def abilityNames(player: PlayerClass): Map[Ability.AbilityId, String] =
-    abilityNamesCache.getOrElseUpdate(
-      player.cls.value,
-      player.cls.builder.abilitiesDoc.map(doc => doc.abilityId -> doc.name).toMap
-    )
 
   def draw(): Unit = {
     frameRate.tick(Timer.getTime())
@@ -261,87 +251,8 @@ final class Renderer(client: GameClient, hudScale: Double = 1.0) {
     HudStyle.scaled(hudScale) {
       infoLines(gameState, hudWidth)
       hud.draw(painter, hudWidth, hudHeight)
-      actionBar(gameState, now, hudWidth, hudHeight)
     }
   }
-
-  /** Our abilities, in the [[HudStyle]]: icon (pushed down just after it is used, darkened from the
-    * top during its cooldown, like the frontend's), key, name and remaining cooldown.
-    */
-  private def actionBar(gameState: GameState, now: Long, width: Double, height: Double): Unit =
-    for
-      id <- client.myId
-      me <- gameState.players.get(id)
-    do {
-      import HudStyle.*
-      val names     = abilityNames(me)
-      val abilities = me.abilities.toArray
-      val slot      = 176.0
-      val left      = (width - slot * abilities.length) / 2
-      val top       = height - 64.0
-      for (abilityId, i) <- abilities.zipWithIndex do {
-        val rect     = Rect(left + i * slot + 2, top, slot - 4, 44)
-        val used     = me.relevantUsedAbilities.get(abilityId)
-        val cooldown = used.map(u => u.time + u.cooldown - now).filter(_ > 0)
-        panel(rect)
-        // The colour of the ability, as a line at the bottom
-        roundedFill(
-          Rect(rect.x + 6, rect.bottom - 5, rect.width - 12, 2),
-          1,
-          softened(Ability.abilityColour(abilityId))
-        )
-        val textLeft = Sprites.abilityIcons.get(abilityId) match {
-          case Some(icon) =>
-            val iconTop = rect.y + 5 + (if used.exists(u => now - u.time < 100) then 3 else 0)
-            Graphics.setColor(1, 1, 1)
-            icon.draw(rect.x + 22, iconTop + 16, 0, 32, 32)
-            for
-              remaining <- cooldown
-              u         <- used
-            do {
-              Graphics.setColor(0, 0, 0, 0.55)
-              Graphics.rectangle(
-                "fill",
-                rect.x + 6,
-                iconTop,
-                32,
-                32 * remaining / u.cooldown.toDouble
-              )
-            }
-            // A thin dark border, so that the (often white) icons do not glare on the panels
-            roundedLine(Rect(rect.x + 5, iconTop - 1, 34, 34), 3, Paint(0, 0, 0, 0.85), 2)
-            rect.x + 42
-          case None =>
-            for
-              remaining <- cooldown
-              u         <- used
-            do
-              roundedFill(
-                Rect(rect.x, rect.y, rect.width * remaining / u.cooldown.toDouble, rect.height),
-                6,
-                Paint(0, 0, 0, 0.45)
-              )
-            rect.x + 2
-        }
-        val keyLabel = client.controls.abilityKeys.lift(i).fold("-")(_.label)
-        text(
-          keyLabel,
-          Rect(textLeft, rect.y + 4, rect.right - textLeft - 2, 16),
-          colour = mutedColour
-        )
-        text(
-          names.getOrElse(abilityId, s"#$abilityId"),
-          Rect(textLeft, rect.y + 19, rect.right - textLeft - 2, 18)
-        )
-        cooldown.foreach(r =>
-          text(
-            f"${r / 1000.0}%.1f",
-            Rect(textLeft, rect.y + 4, rect.right - textLeft - 2, 16),
-            "right"
-          )
-        )
-      }
-    }
 
   /** Ping, controls, target and messages (the lives are in the HUD's frames). */
   private def infoLines(gameState: GameState, width: Double): Unit = {
