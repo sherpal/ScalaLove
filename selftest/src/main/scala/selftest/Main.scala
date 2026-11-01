@@ -76,6 +76,8 @@ object Main {
     same("long mul", 123456789L * 987654321L, 121932631112635269L)
     same("long toString", (1L << 40).toString, "1099511627776")
     same("long hashCode", 1234567890123L.hashCode, 1912276436)
+    for ((name, checksum) <- LongChecks.checksums)
+      same(s"long checksum $name", checksum(), LongChecks.expected(name))
 
     // Double semantics
     same("double toString", 1.5.toString, "1.5")

@@ -1,8 +1,8 @@
--- ScalaLove runtime (LuaJIT). Prepended to every generated file.
+-- ScalaLove runtime. Prepended to every generated file.
 --
 -- Value representation:
 --   Int/Short/Byte/Char/Double/Float -> Lua number
---   Long                             -> LuaJIT int64_t cdata
+--   Long                             -> LuaJIT int64_t cdata, or a { hi, lo } table in Lua 5.1
 --   Boolean                          -> Lua boolean
 --   String                           -> Lua string (byte semantics)
 --   null / undefined (Unit)          -> nil
@@ -11,22 +11,19 @@
 --   Arrays                           -> tables { length = n, [0] = ..., [n-1] = ... }
 local R = {}
 
--- JIT tuning for large generated programs. With the defaults (512 KB of machine
--- code, 1000 traces), LuaJIT fills its machine-code area, flushes every trace and
--- recompiles them over and over, spending most of its time in the JIT compiler.
-if jit and jit.opt then
-  jit.opt.start("maxmcode=65536", "maxtrace=10000", "loopunroll=60")
-end
-
-local bit = require("bit")
-local ffi = require("ffi")
-local tobit, band, bor, bxor, bnot = bit.tobit, bit.band, bit.bor, bit.bxor, bit.bnot
-local lshift, rshift, arshift = bit.lshift, bit.rshift, bit.arshift
 local floor, ceil, huge, fmod = math.floor, math.ceil, math.huge, math.fmod
 local type, getmetatable, setmetatable, rawget = type, getmetatable, setmetatable, rawget
 local strbyte, strchar, strsub, strformat = string.byte, string.char, string.sub, string.format
 
-R.bit, R.ffi = bit, ffi
+-- The target's prelude (prelude-<target>.lua) is inserted here. It defines:
+--   bit, tobit, band, bor, bxor, bnot, lshift, rshift, arshift: Java semantics on 32-bit integers
+--   LongMT (the metatable of Longs, if they are tables), LZERO (the Long 0) and R.int64, R.isLong,
+--     R.d2l, R.l2i, R.l2d, R.lclz, R.ltos, R.ldiv, R.lrem, R.ludiv, R.lurem, R.lucmp
+--   R.fround, R.doubleToBits, R.doubleFromBits, R.floatToBits, R.floatFromBits
+--   printErr(...), traceback(msg, level), wallClock() and monoClock() (in seconds)
+-- @PRELUDE@
+
+R.bit = bit
 
 local C, MOD, LOAD = {}, {}, {}
 R.C, R.MOD, R.LOAD = C, MOD, LOAD
@@ -141,76 +138,7 @@ function R.clz(x)
 end
 
 -- ---------------------------------------------------------------------------
--- Long arithmetic (int64_t cdata)
-
-local int64 = ffi.typeof("int64_t")
-local uint64 = ffi.typeof("uint64_t")
-R.int64 = int64
-
-local LMIN = -9223372036854775807LL - 1LL
-local LMAX = 9223372036854775807LL
-
-function R.ldiv(a, b)
-  if b == 0LL then R.arithmeticException("/ by zero") end
-  if a == LMIN and b == -1LL then return LMIN end
-  return a / b
-end
-
-function R.lrem(a, b)
-  if b == 0LL then R.arithmeticException("/ by zero") end
-  if b == -1LL then return 0LL end
-  return a % b
-end
-
-function R.ludiv(a, b)
-  if b == 0LL then R.arithmeticException("/ by zero") end
-  return int64(ffi.cast(uint64, a) / ffi.cast(uint64, b))
-end
-
-function R.lurem(a, b)
-  if b == 0LL then R.arithmeticException("/ by zero") end
-  return int64(ffi.cast(uint64, a) % ffi.cast(uint64, b))
-end
-
-function R.lucmp(a, b)
-  local ua, ub = ffi.cast(uint64, a), ffi.cast(uint64, b)
-  if ua < ub then return -1 elseif ua > ub then return 1 else return 0 end
-end
-
-function R.d2l(x)
-  if x ~= x then return 0LL end
-  if x >= 9223372036854775807 then return LMAX end
-  if x <= -9223372036854775808 then return LMIN end
-  return int64(x)
-end
-
-function R.l2i(x)
-  return tobit(tonumber(band(x, 0xffffffffLL)))
-end
-
-function R.lclz(x)
-  if x == 0LL then return 64 end
-  local hi = tobit(tonumber(rshift(x, 32)))
-  if hi ~= 0 then return R.clz(hi) end
-  return 32 + R.clz(R.l2i(x))
-end
-
-function R.ltos(x)
-  local s = tostring(x)
-  return (s:gsub("LL$", ""))
-end
-
--- ---------------------------------------------------------------------------
 -- Floating point
-
-local fbox = ffi.new("float[1]")
-function R.fround(x) fbox[0] = x; return tonumber(fbox[0]) end
-
-local bits = ffi.new("union { double d; int64_t l; float f; int32_t i; }")
-function R.doubleToBits(x) bits.d = x; return bits.l end
-function R.doubleFromBits(l) bits.l = l; return bits.d end
-function R.floatToBits(x) bits.f = x; return tonumber(bits.i) end
-function R.floatFromBits(i) bits.i = i; return tonumber(bits.f) end
 
 -- JS-like Number.prototype.toString()
 function R.numToStr(x)
@@ -263,6 +191,7 @@ function R.str(x)
   elseif t == "table" then
     local mt = getmetatable(x)
     if mt == R.CharBox then return R.chr(x.c) end
+    if mt == LongMT then return R.ltos(x) end
     if mt and mt[TOSTRING] then return x[TOSTRING](x) end
   end
   return tostring(x)
@@ -284,7 +213,9 @@ R.H = H
 function R.dp(x, m, ...)
   local t = type(x)
   if t == "table" then
-    if getmetatable(x) == CharBox then return H.char[m](x.c, ...) end
+    local mt = getmetatable(x)
+    if mt == CharBox then return H.char[m](x.c, ...) end
+    if mt == LongMT then return H.long[m](x, ...) end
     return x[m](x, ...)
   elseif t == "string" then return H.string[m](x, ...)
   elseif t == "number" then return H.number[m](x, ...)
@@ -302,7 +233,6 @@ function R.isInt(x) return type(x) == "number" and tobit(x) == x and (x ~= 0 or 
 function R.isByte(x) return R.isInt(x) and x >= -128 and x <= 127 end
 function R.isShort(x) return R.isInt(x) and x >= -32768 and x <= 32767 end
 function R.isFloat(x) return type(x) == "number" and (x ~= x or R.fround(x) == x) end
-function R.isLong(x) return type(x) == "cdata" and ffi.istype(int64, x) end
 function R.isChar(x) return type(x) == "table" and getmetatable(x) == CharBox end
 
 -- Ancestors of the hijacked classes, filled in by the generated code
@@ -314,6 +244,7 @@ function R.isInstance(x, name)
   if t == "table" then
     local mt = getmetatable(x)
     if mt == CharBox then return R.hijackedAncestors.char[name] == true end
+    if mt == LongMT then return R.hijackedAncestors.long[name] == true end
     if mt ~= nil and mt.__arrBase then
       return name == "java.lang.Object" or name == "java.lang.Cloneable" or name == "java.io.Serializable"
     end
@@ -394,7 +325,7 @@ local idHashes = setmetatable({}, { __mode = "k" })
 local lastIdHash = 0
 function R.ihc(x)
   local t = type(x)
-  if t == "table" and getmetatable(x) ~= CharBox then
+  if t == "table" and getmetatable(x) ~= CharBox and getmetatable(x) ~= LongMT then
     local h = idHashes[x]
     if not h then
       lastIdHash = tobit(lastIdHash + 0x61c88647)
@@ -447,6 +378,7 @@ function R.getClass(x)
   end
   local mt = getmetatable(x)
   if mt == CharBox then return R.classOf("java.lang.Character") end
+  if mt == LongMT then return R.classOf("java.lang.Long") end
   if mt and mt.__name then return R.classOf(mt.__name) end
   return nil
 end
@@ -466,8 +398,8 @@ js.undefined = nil
 js.console = {
   log = function(...) print(...) end,
   info = function(...) print(...) end,
-  warn = function(...) io.stderr:write(table.concat({ ... }, " "), "\n") end,
-  error = function(...) io.stderr:write(table.concat({ ... }, " "), "\n") end,
+  warn = function(...) printErr(table.concat({ ... }, " ")) end,
+  error = function(...) printErr(table.concat({ ... }, " ")) end,
 }
 js.NaN = 0 / 0
 js.Infinity = huge
@@ -479,7 +411,7 @@ local function jsTypeof(x)
   elseif t == "string" then return "string"
   elseif t == "boolean" then return "boolean"
   elseif t == "function" then return "function"
-  elseif t == "cdata" then return "bigint"
+  elseif t == "cdata" or (t == "table" and getmetatable(x) == LongMT) then return "bigint"
   end
   return "object"
 end
@@ -524,14 +456,11 @@ js.Object = {
 
 js.Error = {
   new = function(msg)
-    return { message = msg, stack = debug.traceback(msg and tostring(msg) or "", 3) }
+    return { message = msg, stack = traceback(msg and tostring(msg) or "", 3) }
   end,
 }
 
--- Wall clock: LuaSocket's (bundled with LÖVE) when available
-local hasSocket, luasocket = pcall(require, "socket")
-local wallClock = hasSocket and luasocket.gettime or os.time
-js.performance = { now = function() return wallClock() * 1000 end }
+js.performance = { now = function() return monoClock() * 1000 end }
 js.Date = { now = function() return math.floor(wallClock() * 1000) end }
 
 js.Number = {
@@ -1434,7 +1363,8 @@ end
 -- Futures) schedules its tasks with setTimeout(task, 0).
 --
 -- scalalove.runTimers() runs the tasks that are due. In LÖVE, it runs automatically at the start
--- of every frame: `love.update` is wrapped (see the end of this file).
+-- of every frame: `love.update` is wrapped (see the end of this file). Likewise in World of Warcraft,
+-- with a frame's OnUpdate.
 
 local immediate = {}   -- FIFO of tasks with no delay (zero-delay timeouts, microtasks)
 local delayed = {}     -- timers with a due time (in seconds)
@@ -1449,7 +1379,7 @@ local function schedule(fn, delay, args, interval)
   if delay <= 0 and not interval then
     immediate[#immediate + 1] = { id = id, fn = fn, args = args }
   else
-    delayed[#delayed + 1] = { id = id, fn = fn, args = args, due = wallClock() + math.max(delay, 1) / 1000,
+    delayed[#delayed + 1] = { id = id, fn = fn, args = args, due = monoClock() + math.max(delay, 1) / 1000,
       interval = interval and math.max(delay, 1) / 1000 or nil }
   end
   return id
@@ -1463,8 +1393,8 @@ js.queueMicrotask = function(fn) immediate[#immediate + 1] = { id = newTimerId()
 
 local function runTask(task)
   if cancelled[task.id] then return end
-  local ok, err = xpcall(function() task.fn(unpack(task.args)) end, debug.traceback)
-  if not ok then io.stderr:write("Uncaught error in a timer: ", tostring(err), "\n") end
+  local ok, err = xpcall(function() task.fn(unpack(task.args)) end, traceback)
+  if not ok then printErr("Uncaught error in a timer: " .. tostring(err)) end
 end
 
 scalalove = scalalove or {}
@@ -1476,7 +1406,7 @@ function scalalove.pendingTimers()
 end
 
 function scalalove.runTimers()
-  local deadline = wallClock()
+  local deadline = monoClock()
   local budget = 100000
   local function runImmediate()
     while #immediate > 0 and budget > 0 do
@@ -1780,7 +1710,7 @@ local function parseArrayDesc(desc)
   if strsub(rest, 1, 1) == "L" then rest = strsub(rest, 2, -2) end
   return rest, dims
 end
-local zeros = { Z = false, J = 0LL, C = 0, B = 0, S = 0, I = 0, F = 0, D = 0 }
+local zeros = { Z = false, J = LZERO, C = 0, B = 0, S = 0, I = 0, F = 0, D = 0 }
 
 function R.classComponentType(c)
   local d = c.__desc
@@ -1835,6 +1765,15 @@ if type(love) == "table" and getmetatable(love) == nil then
       if k == "update" then userUpdate = v else rawset(t, k, v) end
     end,
   })
+end
+
+-- In World of Warcraft, run the timers at every frame. Addons share their globals, so this uses this
+-- runtime's own runTimers rather than the global scalalove's.
+if type(CreateFrame) == "function" then
+  local runTimers = scalalove.runTimers
+  CreateFrame("Frame"):SetScript("OnUpdate", function()
+    if #immediate > 0 or #delayed > 0 then runTimers() end
+  end)
 end
 
 return R

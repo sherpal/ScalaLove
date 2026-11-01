@@ -4,3 +4,4 @@ target/
 .bloop/
 .vscode/
 .idea/
+.scala-build/

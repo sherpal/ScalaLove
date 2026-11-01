@@ -12,7 +12,13 @@ import org.scalajs.linker.interface.unstable.ModuleInitializerImpl
 import org.scalajs.linker.standard.{LinkedClass, ModuleSet}
 
 /** Knowledge about the whole program, shared by all function emitters. */
-final class GlobalContext(val classes: Map[ClassName, LinkedClass]) {
+final class GlobalContext(val classes: Map[ClassName, LinkedClass], val target: LuaTarget) {
+
+  /** The Long 0, as a Lua expression. */
+  def longZero: String = target match {
+    case LuaTarget.LuaJIT => "0LL"
+    case LuaTarget.Lua51 => "R.LZERO"
+  }
 
   /** All ancestors of hijacked classes: values of these types may be primitives. */
   val hijackedAncestors: Set[ClassName] =
@@ -58,11 +64,11 @@ object LuaEmitter {
 }
 
 /** Emits a whole linked program as a single Lua file. */
-final class LuaEmitter(moduleSet: ModuleSet) {
+final class LuaEmitter(moduleSet: ModuleSet, target: LuaTarget) {
   private val linkedClasses: List[LinkedClass] =
     moduleSet.modules.flatMap(_.classDefs) ++ moduleSet.abstractClasses
 
-  private val g = new GlobalContext(linkedClasses.map(c => c.className -> c).toMap)
+  private val g = new GlobalContext(linkedClasses.map(c => c.className -> c).toMap, target)
 
   private val emittedClasses = linkedClasses.filter { c =>
     c.kind match {
@@ -81,7 +87,7 @@ final class LuaEmitter(moduleSet: ModuleSet) {
   private def zeroOf(tpe: Type): Option[String] = tpe match {
     case BooleanType => Some("false")
     case CharType | ByteType | ShortType | IntType | FloatType | DoubleType => Some("0")
-    case LongType => Some("0LL")
+    case LongType => Some(g.longZero)
     case _ => None
   }
 
@@ -295,7 +301,7 @@ final class LuaEmitter(moduleSet: ModuleSet) {
             else
               ref.tpe match {
                 case BooleanType => "false"
-                case LongType => "0LL"
+                case LongType => g.longZero
                 case _ => "0"
               }
           (ref.charCode.toString, z)

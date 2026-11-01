@@ -54,17 +54,28 @@ object LuaBackend {
   ) // ES 5.1 is deprecated as a JS target, which does not matter for Lua
   val esFeatures: ESFeatures = ESFeatures.Defaults.withESVersion(ESVersion.ES5_1)
 
-  def runtime: String = {
-    val in = getClass.getResourceAsStream("/scalalove/runtime.lua")
+  /** The runtime, with the target's prelude in it. */
+  def runtime(target: LuaTarget): String =
+    resource("runtime.lua").replace("-- @PRELUDE@\n", resource(s"prelude-${target.id}.lua"))
+
+  private def resource(name: String): String = {
+    val in = getClass.getResourceAsStream(s"/scalalove/$name")
     try new String(in.readAllBytes(), StandardCharsets.UTF_8)
     finally in.close()
   }
 }
 
-/** Usage: Main <main class> <output dir> <classpath> */
+/** Usage: Main <main class> <output dir> <classpath> [target] (target: luajit, the default, or lua51)
+  */
 object Main {
   def main(args: Array[String]): Unit = {
-    val Array(mainClass, outDir, cp) = args
+    val (mainClass, outDir, cp, target) = args match {
+      case Array(mainClass, outDir, cp) => (mainClass, outDir, cp, LuaTarget.LuaJIT)
+      case Array(mainClass, outDir, cp, target) =>
+        (mainClass, outDir, cp, LuaTarget.fromId(target))
+      case _ =>
+        sys.error("Usage: Main <main class> <output dir> <classpath> [luajit|lua51]")
+    }
     val classpath = cp.split(java.io.File.pathSeparator).toSeq.filter(_.nonEmpty).map(Paths.get(_))
 
     val config = StandardConfig()
@@ -104,7 +115,8 @@ object Main {
       if (tuplesReady) firstModuleSet
       else link(MultipleReturns.requirements(arities))
 
-    val lua = new LuaEmitter(moduleSet).emit(LuaBackend.runtime, msg => System.err.println(msg))
+    val lua = new LuaEmitter(moduleSet, target)
+      .emit(LuaBackend.runtime(target), msg => System.err.println(msg))
 
     val outPath = Paths.get(outDir)
     Files.createDirectories(outPath)

@@ -110,7 +110,18 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
       val target: Target,
       val tpe: Type,
       val fnDepth: Int
-  )
+  ) {
+
+    /** In Lua 5.1, the variable set by jumps that break out of nested loops or blocks. */
+    var flag: Option[String] = None
+  }
+
+  /** A Lua construct that `break` exits (in Lua 5.1, labeled blocks are `repeat ... until true`),
+    * and the labels whose jumps break out of it.
+    */
+  private final class Breakable(val label: Option[LabelInfo]) {
+    val escapes = mutable.LinkedHashSet.empty[LabelInfo]
+  }
 
   /** A `pcall`ed function created for a try block, and the outer labels its body jumps to. */
   private final class TryContext(val fnDepth: Int) {
@@ -120,6 +131,9 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
   private var labels                     = Map.empty[LabelName, LabelInfo]
   private var fnDepth                    = 0
   private var tryStack: List[TryContext] = Nil
+  private var breakables: List[Breakable] = Nil
+
+  private def lua51: Boolean = g.target == LuaTarget.Lua51
 
   // ---------------------------------------------------------------------------
   // Lifted functions
@@ -218,6 +232,26 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
             withLabel(label, new LabelInfo("", target, resultType, fnDepth)) {
               emitInto(body, target)
             }
+          case _ if lua51 =>
+            // No goto: jumps `break` out of a `repeat ... until true`, whose body is emitted first to
+            // know whether it needs a flag (declared before it)
+            labelCounter += 1
+            val info     = new LabelInfo(s"_L$labelCounter", target, tpe, fnDepth)
+            val block    = new Breakable(Some(info))
+            val savedOut = out
+            out = new StringBuilder
+            indented {
+              withBreakable(block) {
+                withLabel(label, info)(emitInto(body, target))
+              }
+            }
+            val bodyCode = out
+            out = savedOut
+            info.flag.foreach(f => declare(f, Some("false")))
+            line("repeat")
+            out.append(bodyCode)
+            line("until true")
+            emitEscapes(block)
           case _ =>
             labelCounter += 1
             val luaLabel = s"_L$labelCounter"
@@ -239,32 +273,38 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
         line("end")
 
       case While(cond, body) =>
+        val loop = new Breakable(None)
         if (isSimple(cond)) {
           line(s"while ${expr(cond).code} do")
-          indented(stat(body))
+          indented(withBreakable(loop)(stat(body)))
           line("end")
         } else {
           line("while true do")
           indented {
-            val c = expr(cond).code
-            line(s"if not $c then break end")
-            stat(body)
+            withBreakable(loop) {
+              val c = expr(cond).code
+              line(s"if not $c then break end")
+              stat(body)
+            }
           }
           line("end")
         }
+        emitEscapes(loop)
         finishVoid(target)
 
       case ForIn(obj, keyVar, _, body) =>
-        val o = expr(obj).code
-        val k = localIdent(keyVar.name)
+        val o    = expr(obj).code
+        val k    = localIdent(keyVar.name)
+        val loop = new Breakable(None)
         if (spill) {
           line(s"for _k in pairs($o) do")
-          indented { line(s"$k = _k"); stat(body) }
+          indented(withBreakable(loop) { line(s"$k = _k"); stat(body) })
         } else {
           line(s"for $k in pairs($o) do")
-          indented(stat(body))
+          indented(withBreakable(loop)(stat(body)))
         }
         line("end")
+        emitEscapes(loop)
 
       case TryCatch(block, errVar, _, handler) =>
         val resultVar = valueVarFor(tree, target)
@@ -366,6 +406,35 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
     finally labels = saved
   }
 
+  private def withBreakable[A](b: Breakable)(f: => A): A = {
+    val saved = breakables
+    breakables = b :: saved
+    try f
+    finally breakables = saved
+  }
+
+  /** Lua 5.1: jumps to the end of a labeled block of the current function. */
+  private def emitBreakTo(info: LabelInfo): Unit = {
+    val crossed = breakables.takeWhile(!_.label.contains(info))
+    if (crossed.nonEmpty) {
+      val flag = info.flag.getOrElse {
+        val f = newTemp()
+        info.flag = Some(f)
+        f
+      }
+      line(s"$flag = true")
+      crossed.foreach(_.escapes += info)
+    }
+    line("do break end")
+  }
+
+  /** After a loop or block: goes on breaking out to the labels that jumped out of it. */
+  private def emitEscapes(b: Breakable): Unit =
+    for (info <- b.escapes; flag <- info.flag) line(s"if $flag then break end")
+
+  private def emitGoto(info: LabelInfo): Unit =
+    if (lua51) emitBreakTo(info) else line(s"goto ${info.luaLabel}")
+
   /** Inside a pcall'ed function: return a jump marker to the enclosing try. */
   private def jumpOut(label: LabelName, v: String): Unit = {
     val ctx = tryStack.head
@@ -383,9 +452,9 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
           line(s"do return $v end")
         case AssignTo(lhs, _) =>
           line(s"$lhs = $v")
-          line(s"goto ${info.luaLabel}")
+          emitGoto(info)
         case Discard =>
-          line(s"goto ${info.luaLabel}")
+          emitGoto(info)
       }
   }
 
@@ -407,10 +476,10 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
           }
         case t @ AssignTo(_, _) =>
           emitInto(value, t)
-          line(s"goto ${info.luaLabel}")
+          emitGoto(info)
         case Discard =>
           stat(value)
-          line(s"goto ${info.luaLabel}")
+          emitGoto(info)
       }
     }
   }
@@ -433,6 +502,8 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
     line(s"${if (spill) "" else "local "}$ok, $err, $k, $v = pcall(function()")
     val savedLocalCount = localCount
     localCount = 0
+    val savedBreakables = breakables
+    breakables = Nil
     indented {
       fnDepth += 1
       tryStack ::= ctx
@@ -443,6 +514,7 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
         tryStack = tryStack.tail
         fnDepth -= 1
         localCount = savedLocalCount
+        breakables = savedBreakables
       }
     }
     line("end)")
@@ -712,7 +784,7 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
         case CharType => call("R.unboxC", List(v.code))
         case ByteType | ShortType | IntType => LExp(s"(${v.code} or 0)", Prefix)
         case FloatType | DoubleType => LExp(s"(${v.code} or 0)", Prefix)
-        case LongType => LExp(s"(${v.code} or 0LL)", Prefix)
+        case LongType => LExp(s"(${v.code} or ${g.longZero})", Prefix)
         case StringType => LExp(s"""(${v.code} or "")""", Prefix)
         case UndefType => call("R.void", List(v.code))
         case _ => v
@@ -889,10 +961,12 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
     val savedLabels     = labels
     val savedTry        = tryStack
     val savedLocalCount = localCount
+    val savedBreakables = breakables
     out = new StringBuilder
     indentLevel = 1
     labels = Map.empty
     tryStack = Nil
+    breakables = Nil
     localCount = 0
     fnDepth += 1
     val code =
@@ -934,6 +1008,7 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
         labels = savedLabels
         tryStack = savedTry
         localCount = savedLocalCount
+        breakables = savedBreakables
         fnDepth -= 1
       }
     val kind =
@@ -953,6 +1028,8 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
     case ByteLiteral(v) => intLit(v.toInt)
     case ShortLiteral(v) => intLit(v.toInt)
     case IntLiteral(v) => intLit(v)
+    case LongLiteral(v) if lua51 =>
+      call("R.long", List((v >> 32).toInt.toString, v.toInt.toString))
     case LongLiteral(v) =>
       if (v == Long.MinValue) LExp("(-9223372036854775807LL - 1LL)", Prefix)
       else if (v < 0) LExp(s"(${v}LL)", Prefix)
@@ -970,7 +1047,9 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
     if (v.isNaN) LExp("(0/0)", Prefix)
     else if (v == Double.PositiveInfinity) LExp("math.huge", Prefix)
     else if (v == Double.NegativeInfinity) LExp("(-math.huge)", Prefix)
-    else if (v == 0.0 && 1.0 / v < 0) LExp("(-0.0)", Prefix)
+    else if (v == 0.0 && 1.0 / v < 0)
+      // Lua 5.1 merges the constants -0.0 and 0 (they are equal) when a function has both
+      if (lua51) LExp("R.NEGZERO", Prefix) else LExp("(-0.0)", Prefix)
     else if (v == v.toLong.toDouble && Math.abs(v) < 1e15) {
       val s = v.toLong.toString
       if (v < 0) LExp(s"($s)", Prefix) else LExp(s, Other)
@@ -1047,9 +1126,9 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
       case LongToInt => call("R.l2i", List(v))
       case DoubleToInt => call("R.d2i", List(v))
       case DoubleToFloat => call("R.fround", List(v))
-      case LongToDouble => call("tonumber", List(v))
+      case LongToDouble => call(if (lua51) "R.l2d" else "tonumber", List(v))
       case DoubleToLong => call("R.d2l", List(v))
-      case LongToFloat => call("R.fround", List(s"tonumber($v)"))
+      case LongToFloat => call("R.fround", List(s"${if (lua51) "R.l2d" else "tonumber"}($v)"))
       case String_length => LExp(s"(#${prefix(e)})", Prefix)
       case Class_name => LExp(s"${prefix(e)}.name", Prefix)
       case Class_isPrimitive => LExp(s"${prefix(e)}.isPrimitive", Prefix)
@@ -1085,9 +1164,17 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
     val List(a, b)       = exprs(List(lhs, rhs))
     def infix(o: String) = LExp(s"($a $o $b)", Prefix)
     def fn(f: String)    = call(f, List(a, b))
+    // Lua 5.1: Longs are tables, operated on by the runtime
+    def long(luaJIT: => LExp, lua51Fn: String) = if (lua51) fn(lua51Fn) else luaJIT
     (op: @annotation.switch) match {
-      case === | Boolean_== | Int_== | Long_== | Double_== => infix("==")
-      case !== | Boolean_!= | Int_!= | Long_!= | Double_!= => infix("~=")
+      case Long_== => long(infix("=="), "R.leq")
+      case Long_!= => long(infix("~="), "R.lne")
+      case Long_< => long(infix("<"), "R.llt")
+      case Long_<= => long(infix("<="), "R.lle")
+      case Long_> => long(infix(">"), "R.lgt")
+      case Long_>= => long(infix(">="), "R.lge")
+      case === | Boolean_== | Int_== | Double_== => infix("==")
+      case !== | Boolean_!= | Int_!= | Double_!= => infix("~=")
       case String_+ =>
         LExp(s"(${toLuaString(a, lhs.tpe)} .. ${toLuaString(b, rhs.tpe)})", Prefix)
       case Boolean_| =>
@@ -1107,21 +1194,21 @@ final class FunctionEmitter(g: GlobalContext, enclosingClass: ClassName, spill: 
       case Int_<< => fn("lshift")
       case Int_>>> => fn("rshift")
       case Int_>> => fn("arshift")
-      case Int_< | Long_< | Double_< => infix("<")
-      case Int_<= | Long_<= | Double_<= => infix("<=")
-      case Int_> | Long_> | Double_> => infix(">")
-      case Int_>= | Long_>= | Double_>= => infix(">=")
-      case Long_+ => infix("+")
-      case Long_- => infix("-")
-      case Long_* => infix("*")
+      case Int_< | Double_< => infix("<")
+      case Int_<= | Double_<= => infix("<=")
+      case Int_> | Double_> => infix(">")
+      case Int_>= | Double_>= => infix(">=")
+      case Long_+ => long(infix("+"), "R.ladd")
+      case Long_- => long(infix("-"), "R.lsub")
+      case Long_* => long(infix("*"), "R.lmul")
       case Long_/ => fn("R.ldiv")
       case Long_% => fn("R.lrem")
-      case Long_| => fn("bor")
-      case Long_& => fn("band")
-      case Long_^ => fn("bxor")
-      case Long_<< => fn("lshift")
-      case Long_>>> => fn("rshift")
-      case Long_>> => fn("arshift")
+      case Long_| => long(fn("bor"), "R.lor")
+      case Long_& => long(fn("band"), "R.land")
+      case Long_^ => long(fn("bxor"), "R.lxor")
+      case Long_<< => long(fn("lshift"), "R.lshl")
+      case Long_>>> => long(fn("rshift"), "R.lshr")
+      case Long_>> => long(fn("arshift"), "R.lsar")
       case Float_+ => call("R.fround", List(s"$a + $b"))
       case Float_- => call("R.fround", List(s"$a - $b"))
       case Float_* => call("R.fround", List(s"$a * $b"))

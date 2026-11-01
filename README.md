@@ -33,10 +33,29 @@ Other tasks (available on every Lua project):
 | `luaTest`     | `luaLink`, then runs it headlessly with `luajit` (fake `love` table)|
 | `luaProbe`    | Prints the linked classes and IR node statistics (debugging)        |
 
-`sbt selftest/luaTest` runs a program checking ~85 language/library behaviours
+`sbt selftest/luaTest` runs a program checking ~120 language/library behaviours
 (Int/Long overflow, strings, case classes, enums, collections, exceptions,
 multiple return values, JSON with circe, regular expressions, `String.format`,
-futures and timers, ...).
+futures and timers, ...). Its Long checks (`LongChecks.scala`) fold each
+operation over ~4000 pairs of operands into a checksum, compared with the JVM's
+(`scala-cli run --server=false tools/LongChecksums.scala` prints them).
+
+### Targets
+
+The `luaTarget` setting chooses the Lua the program is linked for:
+
+* `luajit` (the default): LuaJIT, as in LÖVE.
+* `lua51`: plain Lua 5.1 without `require`, FFI, `io` or `goto`, as in World of Warcraft
+  (`wowProject`s set it). Bit operations use the `bit` library when there is one
+  (WoW has it), pure Lua otherwise.
+
+To check the `lua51` output without WoW, run it with a Lua 5.1 interpreter in an
+environment without these libraries, e.g. for the self-test (all its checks pass):
+
+```
+sbt 'set selftest/luaTarget := "lua51"' selftest/luaLink
+lua5.1 -e 'require=nil; ffi=nil; jit=nil; io=nil; debug=nil' tools/headless.lua selftest/target/lua
+```
 
 To take screenshots from inside LÖVE (useful to check rendering from a script),
 optionally simulating input:
@@ -390,7 +409,9 @@ Scala sources ──scalac + Scala.js plugin──▶ .sjsir (Scala.js IR)
   * `LuaEmitter.scala`: whole program layout (class tables, inheritance, runtime hooks, main).
   * `FunctionEmitter.scala`: IR trees → Lua statements/expressions.
   * `Naming.scala`: IR names → Lua identifiers.
-  * `resources/scalalove/runtime.lua`: the runtime library, prepended to the output.
+  * `resources/scalalove/runtime.lua`: the runtime library, prepended to the output, with the
+    target's prelude (`prelude-luajit.lua` or `prelude-lua51.lua`: bit operations, Longs,
+    float bits, console and clocks) inserted in it.
 * Only reachable code is emitted: Pong links 211 classes (~5.7k lines of Lua).
 
 ### Value representation
@@ -398,8 +419,8 @@ Scala sources ──scalac + Scala.js plugin──▶ .sjsir (Scala.js IR)
 | Scala                       | Lua                                                            |
 |-----------------------------|----------------------------------------------------------------|
 | `Int`, `Short`, `Byte`      | number, wrapped to 32 bits with `bit.tobit`                    |
-| `Double`, `Float`           | number (`Float` rounded through the FFI)                       |
-| `Long`                      | LuaJIT `int64_t` cdata (native 64-bit wraparound)              |
+| `Double`, `Float`           | number (`Float` rounded through the FFI, or `math.frexp`)      |
+| `Long`                      | LuaJIT `int64_t` cdata (native 64-bit wraparound); in Lua 5.1, a `{hi, lo}` table of 32-bit halves |
 | `Char`                      | number (UTF-16 code unit); boxed as `{c = ...}` when upcast    |
 | `Boolean`                   | boolean                                                        |
 | `String`                    | Lua string (**byte** semantics for now)                        |
@@ -407,7 +428,9 @@ Scala sources ──scalac + Scala.js plugin──▶ .sjsir (Scala.js IR)
 | objects                     | tables whose metatable is the class table (methods copied down)|
 | arrays, `js.Array`          | 0-based tables with an explicit `length` field                 |
 
-Control flow: labeled blocks and early returns use `goto` (LuaJIT supports it),
+Control flow: labeled blocks and early returns use `goto` (LuaJIT supports it).
+In Lua 5.1, a labeled block is a `repeat ... until true` that jumps `break` out of;
+jumps from nested loops set a flag, checked after each loop.
 `try`/`catch`/`finally` use `pcall`.
 
 Performance notes (LuaJIT):
@@ -483,6 +506,5 @@ regex compiler produces (`java.util.regex`, `String.format`, `split`, `replaceAl
   `ArrayIndexOutOfBoundsException`, ... but `ArithmeticException` on `/ by zero` works.
 * Not supported yet: returning multiple values *from* Scala callbacks to Lua, JS classes defined in Scala,
   dynamic imports, reflection beyond `getClass.getName`.
-* LuaJIT only (LÖVE). Plain Lua 5.1 (World of Warcraft) needs `goto`-free control
-  flow, a `Long` emulation (Scala.js' `RuntimeLong`) and a namespace table instead
-  of globals.
+* Lua 5.1 (World of Warcraft): the runtime still defines the global `scalalove`
+  table (shared by all addons), and Long arithmetic allocates a table per result.
