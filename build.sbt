@@ -2,8 +2,8 @@ ThisBuild / scalaVersion := "3.8.4"
 
 val scalaJSVersion = "1.22.0"
 
-lazy val luaOutput  = settingKey[File]("Directory where the Lua program is written")
-lazy val luaTarget  =
+lazy val luaOutput = settingKey[File]("Directory where the Lua program is written")
+lazy val luaTarget =
   settingKey[String]("Lua target: luajit (LÖVE) or lua51 (plain Lua 5.1, e.g. World of Warcraft)")
 lazy val luaLink    = taskKey[File]("Link the program to Lua (main.lua)")
 lazy val luaRun     = taskKey[Unit]("Link the game to Lua and run it with LÖVE")
@@ -76,21 +76,25 @@ def loveProject(p: Project) = luaProject(p).settings(
   )
 )
 
-lazy val wowToc      = settingKey[WOWPackage.Toc]("Table of contents info for WoW addon")
-lazy val addonOutput = settingKey[File]("Folder name where to output addon")
+lazy val wowToc       = settingKey[WOWPackage.Toc]("Table of contents info for WoW addon")
+lazy val addonOutput  = settingKey[File]("Folder name where to output addon")
+lazy val addonsFolder = settingKey[File]("Folder of your World of Warcraft installation")
 
 lazy val packageAddon = taskKey[File]("Package the addon in the output dir.")
+lazy val installAddon = taskKey[File]("Package and install the addon directly in the AddOns folder")
 
 def wowProject(p: Project) = luaProject(p).settings(
   luaTarget := "lua51",
   addonOutput := target.value / "addon" / wowToc.value.name.filterNot(_ == ' '),
+  addonsFolder := new File(
+    "C:\\Program Files (x86)\\World of Warcraft\\_retail_\\Interface\\AddOns"
+  ),
   packageAddon := Def.taskDyn {
     val toc      = wowToc.value
     val link     = luaLink.value
     val luaFiles = IO.listFiles(link)
     Def.task {
       val output = addonOutput.value
-      println(output.getAbsolutePath)
       streams.value.log.info(s"Packaging addon in $output")
       IO.delete(output)
       for {
@@ -98,6 +102,17 @@ def wowProject(p: Project) = luaProject(p).settings(
       } IO.copyFile(file, output / file.name)
       IO.write(output / s"${output.getName}.toc", toc.mkFile(luaFiles.toSeq.map(_.name)))
       output
+    }
+  }.value,
+  installAddon := Def.taskDyn {
+    val packaged = packageAddon.value
+    val folder   = addonsFolder.value
+
+    Def.task {
+      streams.value.log.info(s"Copying packaged addon from $packaged to $folder")
+      val out = folder / packaged.name
+      IO.copyDirectory(packaged, out)
+      out
     }
   }.value
 )
